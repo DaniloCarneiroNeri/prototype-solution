@@ -183,6 +183,7 @@ async def upload_file(file: UploadFile = File(...)):
     try:
         raw = await file.read()
         df = pd.read_excel(BytesIO(raw))
+        df = df.reset_index(drop=True)
     except Exception as e:
         raise HTTPException(400, f"Erro ao ler Excel: {e}")
 
@@ -273,63 +274,39 @@ async def upload_file(file: UploadFile = File(...)):
                 partial_flags.append(False)
                 continue
 
-        # ----------------------------------------------------------------
-        # 4️⃣ QUARTA TENTATIVA: tentar lote+1 e lote-1 (endereço parcial)
-        # ----------------------------------------------------------------
-        # Aplique apenas se normalized contém quadra-lote
-        match_quad_lote = re.search(r",\s*([0-9]+)-([0-9]+)$", normalized)
+            # ----------------------------------------------
+            # 4️⃣ Tentativa parcial — lote ± 1 / ± 2
+            # ----------------------------------------------
+            match_quad_lote = re.search(r",\s*([0-9]+)-([0-9]+)$", normalized)
 
-        if match_quad_lote:
-            quadra_num = int(match_quad_lote.group(1))
-            lote_num = int(match_quad_lote.group(2))
+            if match_quad_lote:
+                quadra_num = int(match_quad_lote.group(1))
+                lote_num = int(match_quad_lote.group(2))
 
-            # tenta primeiro lote +1
-            tentativa1 = f"{normalized.rsplit(',', 1)[0]}, {quadra_num}-{lote_num + 1}"
-            lat4, lng4, cep_here4 = await geocode_with_here(tentativa1)
+                base = normalized.rsplit(",", 1)[0]
 
-            match_ok4 = cep_here4 and cep_here4.replace("-", "") == cep_original.replace("-", "")
+                offsets = [1, 2, -1, -2]
 
-            if match_ok4:
-                final_lat.append(lat4)
-                final_lng.append(lng4)
-                partial_flags.append(True)   # <--- MARCA COMO PARCIAL
-                continue
+                found_partial = False
+                for off in offsets:
+                    novo_lote = lote_num + off
+                    if novo_lote < 0:
+                        continue
 
-            # tenta primeiro lote +2
-            tentativa1 = f"{normalized.rsplit(',', 1)[0]}, {quadra_num}-{lote_num + 2}"
-            lat4, lng4, cep_here4 = await geocode_with_here(tentativa1)
+                    tentativa = f"{base}, {quadra_num}-{novo_lote}"
+                    latp, lngp, cep_part = await geocode_with_here(tentativa)
 
-            match_ok4 = cep_here4 and cep_here4.replace("-", "") == cep_original.replace("-", "")
+                    match_okp = cep_part and cep_part.replace("-", "") == cep_original.replace("-", "")
 
-            if match_ok4:
-                final_lat.append(lat4)
-                final_lng.append(lng4)
-                partial_flags.append(True)   # <--- MARCA COMO PARCIAL
-                continue
-        
-            # tenta lote -1
-            tentativa2 = f"{normalized.rsplit(',', 1)[0]}, {quadra_num}-{max(lote_num - 1, 0)}"
-            lat5, lng5, cep_here5 = await geocode_with_here(tentativa2)
+                    if match_okp:
+                        final_lat.append(latp)
+                        final_lng.append(lngp)
+                        partial_flags.append(True)   # <<< PARCIAL
+                        found_partial = True
+                        break
 
-            match_ok5 = cep_here5 and cep_here5.replace("-", "") == cep_original.replace("-", "")
-
-            if match_ok5:
-                final_lat.append(lat5)
-                final_lng.append(lng5)
-                partial_flags.append(True)  # <--- MARCA COMO PARCIAL
-                continue
-
-            # tenta lote -2
-            tentativa2 = f"{normalized.rsplit(',', 1)[0]}, {quadra_num}-{max(lote_num - 2, 0)}"
-            lat5, lng5, cep_here5 = await geocode_with_here(tentativa2)
-
-            match_ok5 = cep_here5 and cep_here5.replace("-", "") == cep_original.replace("-", "")
-
-            if match_ok5:
-                final_lat.append(lat5)
-                final_lng.append(lng5)
-                partial_flags.append(True)  # <--- MARCA COMO PARCIAL
-                continue
+                if found_partial:
+                    continue
 
         # -------------------------------
         # 3️⃣ Falhou → "Não encontrado"
@@ -340,7 +317,7 @@ async def upload_file(file: UploadFile = File(...)):
 
     df["Geo_Latitude"] = final_lat
     df["Geo_Longitude"] = final_lng
-    df["Partial_Match"] = partial_flags
+    df["Partial_Match"] = pd.Series(partial_flags, index=df.index, dtype=bool)
 
     # Sanitização de saída
     records = []

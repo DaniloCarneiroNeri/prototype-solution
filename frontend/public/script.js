@@ -101,12 +101,12 @@ document.getElementById("btnUpload").onclick = () => {
     let data = resp.data;
 
     data = data.map(row => {
-        const cleaned = { ...row };
-        delete cleaned["Partial_Match"];
-        delete cleaned["Unnamed: 0"];
-        return cleaned;
+    const cleaned = { ...row };
+    delete cleaned["Unnamed: 0"];
+    return cleaned;
     });
 
+    // remover linhas totalmente vazias
     data = data.filter(row => {
         return Object.values(row).some(v => v !== null && v !== "" && v !== undefined);
     });
@@ -141,18 +141,25 @@ function renderTable(columns, data) {
     tableHead.innerHTML = "";
     tableBody.innerHTML = "";
 
-    // Cabeçalhos
-    if (columns.length) {
+    const hiddenCols = ["Partial_Match", "Unnamed: 0"];
+
+    const visibleCols = columns.filter(c => !hiddenCols.includes(c));
+
+    // ============================================================
+    // Cabeçalho
+    // ============================================================
+    if (visibleCols.length) {
         const trTitle = document.createElement("tr");
         const trFilter = document.createElement("tr");
-        const hiddenCols = ["Partial_Match", "Unnamed: 0"];
 
-        columns.filter(c => !hiddenCols.includes(c)).forEach(col => {
+        visibleCols.forEach(col => {
+            // título
             const th = document.createElement("th");
             th.className = "border-b border-r px-4 py-2 text-left font-bold bg-gray-200";
             th.textContent = col;
             trTitle.appendChild(th);
 
+            // filtro
             const thF = document.createElement("th");
             thF.className = "border-b border-r p-1 bg-gray-100";
 
@@ -160,9 +167,10 @@ function renderTable(columns, data) {
             inp.type = "text";
             inp.placeholder = "Filtrar...";
             inp.className = "w-full text-xs p-1 border rounded";
+            inp.dataset.colname = col;   // <--- essencial p/ filterTable
             inp.onkeyup = () => filterTable();
-            thF.appendChild(inp);
 
+            thF.appendChild(inp);
             trFilter.appendChild(thF);
         });
 
@@ -170,7 +178,9 @@ function renderTable(columns, data) {
         tableHead.appendChild(trFilter);
     }
 
-    // Preenchimento em tempo real
+    // ============================================================
+    // Corpo da tabela
+    // ============================================================
     let index = 0;
 
     function addNext() {
@@ -178,7 +188,7 @@ function renderTable(columns, data) {
             setTableLoading(false);
             return;
         }
-        addRow(data[index], columns);
+        addRowFixed(data[index], visibleCols);
         index++;
         requestAnimationFrame(addNext);
     }
@@ -186,38 +196,34 @@ function renderTable(columns, data) {
     addNext();
 }
 
-function addRow(row, columns) {
+function addRowFixed(row, visibleCols) {
     const tb = document.getElementById("tableBody");
 
     const tr = document.createElement("tr");
     tr.className = "odd:bg-white even:bg-slate-50 hover:bg-blue-50";
 
-    // oculta colunas internas mesmo se aparecerem por engano
-    const hiddenCols = ["Partial_Match", "Unnamed: 0"];
+    visibleCols.forEach(col => {
+        const td = document.createElement("td");
+        const value = row[col] ?? "";
 
-    columns.forEach(col => {
-    if (hiddenCols.includes(col)) return;
-    const td = document.createElement("td");
-    const value = row[col] ?? "";
+        td.textContent = value;
+        td.className = "border-b border-r px-4 py-2";
 
-    td.textContent = value;
-    td.className = "border-b border-r px-4 py-2";
+        // 🔴 1 - Erro → vermelho
+        if (value === "Não encontrado") {
+            td.classList.add("text-red-600", "font-bold", "bg-red-50");
+        }
 
-    // 🔴 Caso 1: Não encontrado → vermelho
-    if (value === "Não encontrado") {
-        td.classList.add("text-red-600", "font-bold", "bg-red-50");
-    }
+        // 🟡 2 - Parcial → amarelo claro
+        if (row["Partial_Match"] === true &&
+            (col === "Geo_Latitude" || col === "Geo_Longitude")) {
 
-    // 🟡 Caso 2: Endereço encontrado parcialmente → amarelo
-    if (row["Partial_Match"] === true && 
-        (col === "Geo_Latitude" || col === "Geo_Longitude")) {
+            td.classList.add("bg-yellow-100", "text-yellow-900");
+            td.title = "Endereço encontrado parcialmente - VERIFIQUE";
+        }
 
-        td.classList.add("bg-yellow-100", "text-yellow-900");
-        td.title = "Endereço encontrado parcialmente";
-    }
-
-    tr.appendChild(td);
-});
+        tr.appendChild(td);
+    });
 
     tb.appendChild(tr);
 }
