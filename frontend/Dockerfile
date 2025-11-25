@@ -1,18 +1,18 @@
 # frontend/Dockerfile
 FROM node:18-slim
 
-# cria usuário sem permissão root
+# criar usuário sem permissões
 RUN addgroup --system app && adduser --system --group app
 
 WORKDIR /app
 
-# copia manifestos primeiro
+# copiar manifestos
 COPY package.json package-lock.json* ./
 
-# instala TODAS as dependências (sem --only=production)
-RUN npm ci
+# instala todas as dependências corretamente
+RUN npm install
 
-# copia restante do projeto
+# copia o restante do código
 COPY . .
 
 RUN chown -R app:app /app
