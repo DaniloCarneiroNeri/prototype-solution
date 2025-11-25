@@ -230,6 +230,18 @@ async def upload_file(file: UploadFile = File(...)):
             final_lng.append(lng2)
             partial_flags.append(False)
             continue
+        # -------------------------------
+        # 2️⃣ Trativa com cidade (com Bairro) (sem cep)
+        # -------------------------------
+        cidade = "Goiania, Goiânia - GO"
+        second_query = f"{normalized}, {bairro}, {cidade}"
+        lat2, lng2, cep_here2 = await geocode_with_here(second_query)
+
+        if lat2:
+            final_lat.append(lat2)
+            final_lng.append(lng2)
+            partial_flags.append(True)
+            continue
         # -----------------------------------------------
         # 3️⃣ Terceira tentativa (substituir bairro → Novo Horizonte)
         #    Somente nos bairros autorizados
@@ -274,8 +286,8 @@ async def upload_file(file: UploadFile = File(...)):
                 partial_flags.append(True)   # <--- MARCA COMO PARCIAL
                 continue
 
-            # tenta primeiro lote +1 de novo
-            tentativa1 = f"{normalized.rsplit(',', 1)[0]}, {quadra_num}-{lote_num + 1}"
+            # tenta primeiro lote +2
+            tentativa1 = f"{normalized.rsplit(',', 1)[0]}, {quadra_num}-{lote_num + 2}"
             lat4, lng4, cep_here4 = await geocode_with_here(tentativa1)
 
             match_ok4 = cep_here4 and cep_here4.replace("-", "") == cep_original.replace("-", "")
@@ -298,8 +310,8 @@ async def upload_file(file: UploadFile = File(...)):
                 partial_flags.append(True)  # <--- MARCA COMO PARCIAL
                 continue
 
-            # tenta lote -1 denovo
-            tentativa2 = f"{normalized.rsplit(',', 1)[0]}, {quadra_num}-{max(lote_num - 1, 0)}"
+            # tenta lote -2
+            tentativa2 = f"{normalized.rsplit(',', 1)[0]}, {quadra_num}-{max(lote_num - 2, 0)}"
             lat5, lng5, cep_here5 = await geocode_with_here(tentativa2)
 
             match_ok5 = cep_here5 and cep_here5.replace("-", "") == cep_original.replace("-", "")
