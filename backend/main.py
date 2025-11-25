@@ -22,7 +22,7 @@ app.add_middleware(
 
 HERE_API_KEY = os.getenv("HERE_API_KEY")
 
-# --- LÓGICA DE PARSE (A mesma de antes) ---
+# --- LÓGICA DE PARSE ---
 def parse_address_components(raw):
     if pd.isna(raw) or str(raw).strip() == "":
         return {"full_address": "", "street": "", "quadra": None, "lote": None}
@@ -76,17 +76,30 @@ def parse_address_components(raw):
 
     return {"full_address": full_fmt, "street": street, "quadra": quadra, "lote": lote}
 
-# --- GEOCODING ---
+# --- GEOCODING (CORRIGIDO) ---
 async def geocode_with_here(address: str, session):
+    # CORREÇÃO 1: Verificação de segurança
+    # Se o endereço for None ou vazio, retorna logo sem chamar a API
+    if not address or not str(address).strip():
+        return None, None, None
+
     if not HERE_API_KEY:
-        # Simulação de delay para você ver o efeito visual no front
         await asyncio.sleep(0.1) 
         return -16.70, -49.20, None
 
-    url = f"https://geocode.search.hereapi.com/v1/geocode?q={address}&apiKey={HERE_API_KEY}"
+    # Codifica a URL corretamente para evitar caracteres estranhos
+    from urllib.parse import quote
+    encoded_address = quote(address)
+    
+    url = f"https://geocode.search.hereapi.com/v1/geocode?q={encoded_address}&apiKey={HERE_API_KEY}"
+    
     try:
         async with session.get(url, timeout=10) as response:
-            if response.status != 200: return None, None, None
+            if response.status != 200: 
+                # Loga o erro mas não quebra a aplicação
+                print(f"HERE Error {response.status}: {await response.text()}")
+                return None, None, None
+            
             data = await response.json()
             if "items" in data and len(data["items"]) > 0:
                 item = data["items"][0]
@@ -94,28 +107,20 @@ async def geocode_with_here(address: str, session):
                 addr = item.get("address", {})
                 return pos.get("lat"), pos.get("lng"), addr.get("postalCode")
     except Exception as e:
-        print("HERE Error:", e)
+        print("HERE Exception:", e)
     return None, None, None
 
-# --- GERADOR DE STREAM ---
+# --- GERADOR DE STREAM (CORRIGIDO) ---
 async def process_excel_stream(df):
-    """
-    Gera dados linha a linha no formato NDJSON (Newline Delimited JSON)
-    """
-    
-    # 1. Pré-processamento (rápido)
     processed_data = df["Destination Address"].apply(parse_address_components)
     df_processed = pd.json_normalize(processed_data)
     df["Normalized_Address"] = df_processed["full_address"]
     df["Extracted_Quadra"] = df_processed["quadra"]
     df["Extracted_Lote"] = df_processed["lote"]
 
-    # Inicia colunas vazias para ordenar o JSON final
     df["Geo_Latitude"] = None
     df["Geo_Longitude"] = None
 
-    # 2. Envia METADADOS primeiro (para o front criar o cabeçalho)
-    # Convertemos colunas para lista e garantimos ordem
     cols = df.columns.tolist()
     metadata = {
         "type": "metadata",
@@ -124,33 +129,38 @@ async def process_excel_stream(df):
     }
     yield json.dumps(metadata) + "\n"
 
-    # 3. Processa e envia linha a linha
     async with aiohttp.ClientSession() as session:
         for idx, row in df.iterrows():
-            normalized = row["Normalized_Address"]
+            # Garante que seja string
+            normalized = str(row["Normalized_Address"]).strip() if row["Normalized_Address"] else ""
             cep_original = str(row["Zipcode/Postal code"]).strip()
-            bairro = row.get("Bairro", "")
+            bairro = str(row.get("Bairro", "")).strip()
             
             lat, lng = "Não encontrado", "Não encontrado"
             
-            # Lógica de Geocoding
-            h_lat, h_lng, h_cep = await geocode_with_here(normalized, session)
-            match1 = h_cep and str(h_cep).replace("-", "") == cep_original.replace("-", "")
+            # CORREÇÃO 2: Só chama a API se tivermos algo para buscar
+            if normalized:
+                # Lógica de Geocoding 1
+                h_lat, h_lng, h_cep = await geocode_with_here(normalized, session)
+                match1 = h_cep and str(h_cep).replace("-", "") == cep_original.replace("-", "")
 
-            if match1:
-                lat, lng = h_lat, h_lng
-            else:
-                # Tentativa 2
-                h_lat2, h_lng2, h_cep2 = await geocode_with_here(f"{normalized}, {bairro}", session)
-                match2 = h_cep2 and str(h_cep2).replace("-", "") == cep_original.replace("-", "")
-                if match2:
-                    lat, lng = h_lat2, h_lng2
+                if match1:
+                    lat, lng = h_lat, h_lng
+                else:
+                    # Tentativa 2 (Com Bairro)
+                    # Só tenta se tiver bairro E endereço normalizado
+                    query_2 = f"{normalized}, {bairro}" if bairro else normalized
+                    
+                    h_lat2, h_lng2, h_cep2 = await geocode_with_here(query_2, session)
+                    match2 = h_cep2 and str(h_cep2).replace("-", "") == cep_original.replace("-", "")
+                    if match2:
+                        lat, lng = h_lat2, h_lng2
+            
+            # Se normalized for vazio, ele pula direto para cá e fica como "Não encontrado"
 
-            # Atualiza a linha atual
             row["Geo_Latitude"] = lat
             row["Geo_Longitude"] = lng
 
-            # Sanitiza para JSON
             row_dict = row.to_dict()
             clean_row = {}
             for k, v in row_dict.items():
@@ -161,7 +171,6 @@ async def process_excel_stream(df):
             
             clean_row["type"] = "data"
             
-            # Yield (envia o chunk para o front)
             yield json.dumps(clean_row) + "\n"
 
 @app.post("/upload")
@@ -172,7 +181,6 @@ async def upload_file(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(400, f"Erro ao ler Excel: {e}")
 
-    # Retorna o Stream
     return StreamingResponse(
         process_excel_stream(df),
         media_type="application/x-ndjson"
