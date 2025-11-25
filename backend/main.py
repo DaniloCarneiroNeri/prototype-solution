@@ -130,7 +130,7 @@ def normalize_address(raw):
         if quadra and lote:
             return f"{street}, {quadra}-{lote}"
 
-        return street
+        return "0"
 
     except Exception as e:
         return f"[ERRO-NORMALIZE] {str(e)}"
