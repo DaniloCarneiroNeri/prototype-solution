@@ -124,6 +124,9 @@ document.getElementById("btnUpload").onclick = () => {
     ).length;
 
     document.getElementById("statNotFound").innerText = notFound;
+    
+    let partial = data.filter(r => r["Partial_Match"] === true).length;
+    document.getElementById("statPartial").innerText = partial;
 
     renderTable(columns, data);
 }
