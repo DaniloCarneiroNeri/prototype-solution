@@ -2,16 +2,16 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <title>Upload & Export Excel</title>
+  <title>Route Planner - Realtime</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
   <style>
-    /* Estilo para manter o cabeçalho e o rodapé fixos enquanto o corpo rola */
     .table-container {
-      max-height: 60vh;
+      max-height: 55vh;
       overflow-y: auto;
       position: relative;
+      scroll-behavior: smooth;
     }
     thead th {
       position: sticky;
@@ -30,74 +30,93 @@
         background-color: #f3f4f6;
         border-top: 2px solid #d1d5db;
     }
-    .progress-bar-fill {
-        transition: width 0.3s ease;
+    .progress-bar-fill { transition: width 0.3s ease; }
+    
+    /* ESTADO DESABILITADO/PROCESSANDO */
+    .processing-table {
+        opacity: 0.6;
+        pointer-events: none; /* Bloqueia cliques */
+        filter: grayscale(0.2);
     }
+    /* Cursor de 'espera' no corpo todo quando processando */
+    .cursor-wait-override {
+        cursor: wait !important;
+    }
+
+    /* Modal Animation */
+    .modal-enter { opacity: 0; transform: scale(0.95); }
+    .modal-enter-active { opacity: 1; transform: scale(1); transition: opacity 300ms ease-out, transform 300ms ease-out; }
+    .modal-exit { opacity: 1; transform: scale(1); }
+    .modal-exit-active { opacity: 0; transform: scale(0.95); transition: opacity 200ms ease-in, transform 200ms ease-in; }
   </style>
 </head>
 
-<body class="bg-gray-100 h-screen w-screen flex flex-col">
+<body class="bg-gray-100 h-screen w-screen flex flex-col relative">
 
-  <header class="bg-blue-700 text-white p-4 shadow-md flex justify-between items-center">
-    <h1 class="text-2xl font-bold">Processador de Excel</h1>
+  <header class="bg-blue-800 text-white p-4 shadow-md flex justify-between items-center z-30">
+    <div class="flex items-center gap-2">
+        <svg class="w-8 h-8 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 7m0 13V7"></path></svg>
+        <h1 class="text-2xl font-bold tracking-tight">Route Planner</h1>
+    </div>
   </header>
 
-  <main class="flex-1 overflow-auto p-6">
-    <div class="w-full bg-white shadow rounded-xl p-6">
+  <main class="flex-1 overflow-auto p-6 z-10">
+    <div class="w-full max-w-7xl mx-auto bg-white shadow-lg rounded-xl p-6">
 
       <div class="mb-6">
-        <label class="block text-gray-800 mb-2 font-semibold">Selecione um arquivo .xlsx</label>
+        <label class="block text-gray-700 mb-2 font-semibold text-sm uppercase tracking-wide">Importar Planilha (.xlsx)</label>
         <div class="flex gap-4">
-            <input 
-              id="fileInput" 
-              type="file" 
-              accept=".xlsx"
-              class="flex-1 border border-gray-300 p-3 rounded-lg cursor-pointer hover:border-gray-400"
-            >
-            <button 
-                id="btnUpload"
-                class="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 transition-colors font-semibold shadow-md">
+            <div class="relative flex-1">
+                <input id="fileInput" type="file" accept=".xlsx" class="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none p-3">
+            </div>
+            <button id="btnUpload" class="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 transition-colors font-bold shadow-md flex items-center gap-2">
                 Enviar
             </button>
         </div>
-
-        <div id="progressContainer" class="mt-4 hidden">
-            <div class="flex justify-between mb-1">
-                <span id="progressStatus" class="text-sm font-medium text-blue-700">Enviando...</span>
-                <span id="progressPercent" class="text-sm font-medium text-blue-700">0%</span>
-            </div>
-            <div class="w-full bg-gray-200 rounded-full h-4 shadow-inner overflow-hidden">
-                <div id="progressBar" class="bg-blue-600 h-4 rounded-full progress-bar-fill" style="width: 0%"></div>
-            </div>
-        </div>
-
       </div>
 
-      <div id="result" class="mt-8 hidden">
+      <div id="result" class="hidden">
         
-        <div class="flex justify-between items-center mb-4 border-b pb-2">
-            <h2 class="text-2xl font-semibold text-gray-800">Resultado da Análise</h2>
+        <div class="flex justify-between items-center mb-4 border-b border-gray-200 pb-4">
+            <div>
+                <h2 class="text-xl font-bold text-gray-800">Resultado da Análise</h2>
+                <div id="processingIndicator" class="hidden flex items-center gap-2 mt-1">
+                    <span class="relative flex h-3 w-3">
+                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                      <span class="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+                    </span>
+                    <p class="text-sm font-semibold text-blue-600">
+                        Processando: <span id="currentProcessCount">0</span> / <span id="totalProcessCount">?</span>
+                    </p>
+                </div>
+                <p class="text-sm text-gray-500" id="fileNameDisplay" style="display:none"></p>
+            </div>
             
-            <button 
-                id="btnExport" 
-                onclick="exportToExcel()"
-                class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded inline-flex items-center transition-colors shadow-sm">
-                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                Baixar Excel (.xlsx)
+            <button id="btnExport" onclick="openModal()" disabled class="bg-gray-400 text-white font-bold py-2 px-6 rounded-lg inline-flex items-center shadow-md cursor-not-allowed transition-all">
+                Exportar Dados
             </button>
         </div>
 
-        <div class="border border-gray-300 rounded-lg shadow-sm bg-white">
-            <div class="table-container rounded-t-lg">
+        <div class="border border-gray-300 rounded-lg shadow-sm bg-white overflow-hidden relative">
+            
+            <div id="tableOverlay" class="absolute inset-0 bg-white/10 z-10 hidden flex items-center justify-center pointer-events-none"></div>
+
+            <div class="table-container" id="tableContainer">
                 <table class="min-w-full text-sm border-collapse" id="dataTable">
                     <thead id="tableHead" class="shadow-sm"></thead>
                     <tbody id="tableBody"></tbody>
-                    <tfoot id="tableFooter" class="text-gray-700 font-semibold bg-gray-100">
+                    <tfoot id="tableFooter" class="text-gray-700 font-semibold bg-gray-100 border-t-2 border-gray-300">
                         <tr>
-                            <td colspan="100%" class="px-4 py-3 text-right">
-                                <div class="flex justify-end gap-6">
-                                    <span>Total de Linhas: <span id="statTotalLines" class="text-blue-600">0</span></span>
-                                    <span>Linhas com erro: <span id="statNotFound" class="text-red-600">0</span></span>
+                            <td colspan="100%" class="px-4 py-3">
+                                <div class="flex justify-end gap-8">
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-3 h-3 bg-blue-600 rounded-full"></div>
+                                        <span>Total: <span id="statTotalLines" class="font-bold">0</span></span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-3 h-3 bg-red-600 rounded-full"></div>
+                                        <span>Erros: <span id="statNotFound" class="font-bold text-red-600">0</span></span>
+                                    </div>
                                 </div>
                             </td>
                         </tr>
@@ -106,220 +125,266 @@
             </div>
         </div>
 
-        <div class="mt-8">
-            <details>
-                <summary class="cursor-pointer text-gray-500 hover:text-gray-700">Ver JSON Bruto</summary>
-                <pre id="jsonOutput" class="mt-2 bg-gray-900 text-green-300 p-4 rounded-lg text-xs overflow-auto max-h-40"></pre>
-            </details>
-        </div>
-
       </div>
     </div>
   </main>
 
+  <div id="exportModal" class="fixed inset-0 z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="fixed inset-0 bg-gray-900 bg-opacity-75 transition-opacity backdrop-blur-sm" onclick="closeModal()"></div>
+    <div class="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
+      <div class="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg modal-enter">
+        <div class="bg-white px-4 pb-4 pt-5 sm:p-6 sm:pb-4">
+          <h3 class="text-xl font-semibold text-gray-900">Exportar Dados</h3>
+          <div class="mt-6 flex flex-col gap-3">
+              <button onclick="exportToExcel()" class="group flex items-center justify-between w-full p-4 border border-gray-200 rounded-lg hover:border-green-500 hover:bg-green-50">
+                  <span class="font-bold text-green-700">Excel Completo</span>
+                  <svg class="w-5 h-5 text-gray-400 group-hover:text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+              </button>
+              <button onclick="exportToCircuit()" class="group flex items-center justify-between w-full p-4 border border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50">
+                <span class="font-bold text-gray-900">App Circuit</span>
+                <svg class="w-5 h-5 text-gray-400 group-hover:text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+            </button>
+          </div>
+        </div>
+        <div class="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
+          <button type="button" onclick="closeModal()" class="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
  <script>
-    // Variável global para armazenar os dados processados para exportação
     let globalData = [];
+    let globalColumns = [];
     let globalFileName = "resultado";
 
-    document.getElementById("btnUpload").onclick = () => {
+    document.getElementById("btnUpload").onclick = async () => {
         const fileInput = document.getElementById("fileInput");
         const file = fileInput.files[0];
         const btn = document.getElementById("btnUpload");
+        
+        if (!file) { alert("Selecione um arquivo!"); return; }
 
-        // Elementos UI
-        const progressContainer = document.getElementById("progressContainer");
-        const progressBar = document.getElementById("progressBar");
-        const progressPercent = document.getElementById("progressPercent");
-        const progressStatus = document.getElementById("progressStatus");
+        globalFileName = file.name.split('.')[0];
+        globalData = []; // Limpa dados anteriores
 
-        if (!file) {
-            alert("Selecione um arquivo Excel primeiro!");
-            return;
-        }
+        // --- PREPARAÇÃO DA UI ---
+        btn.disabled = true;
+        btn.classList.add("opacity-50", "cursor-wait");
+        document.body.classList.add("cursor-wait-override");
+        
+        document.getElementById("result").classList.remove("hidden");
+        document.getElementById("fileNameDisplay").innerText = "Arquivo: " + file.name;
+        document.getElementById("fileNameDisplay").style.display = "block";
+        
+        // Ativa o modo "Processando"
+        const tableBody = document.getElementById("tableBody");
+        const tableHead = document.getElementById("tableHead");
+        const dataTable = document.getElementById("dataTable");
+        
+        tableBody.innerHTML = "";
+        tableHead.innerHTML = "";
+        dataTable.classList.add("processing-table"); // Desabilita visualmente
+        
+        document.getElementById("processingIndicator").classList.remove("hidden");
+        document.getElementById("btnExport").disabled = true;
+        document.getElementById("btnExport").classList.remove("bg-green-600", "hover:bg-green-700");
+        document.getElementById("btnExport").classList.add("bg-gray-400");
 
-        // Atualiza nome base do arquivo para exportação
-        globalFileName = file.name.split('.')[0] + "_processado";
+        // Counters
+        let currentCount = 0;
+        let notFoundCount = 0;
+        document.getElementById("currentProcessCount").innerText = "0";
+        document.getElementById("statTotalLines").innerText = "0";
+        document.getElementById("statNotFound").innerText = "0";
 
+        // --- STREAMING REQUEST ---
         const formData = new FormData();
         formData.append("file", file);
 
-        // Reset UI
-        btn.innerText = "Enviando...";
-        btn.disabled = true;
-        btn.classList.add("opacity-50");
-        document.getElementById("result").classList.add("hidden"); 
-        
-        progressContainer.classList.remove("hidden");
-        progressBar.style.width = "0%";
-        progressPercent.innerText = "0%";
-        progressStatus.innerText = "Carregando arquivo...";
-
-        const xhr = new XMLHttpRequest();
-
-        // 1. Progresso
-        xhr.upload.onprogress = (event) => {
-            if (event.lengthComputable) {
-                const percentComplete = Math.round((event.loaded / event.total) * 100);
-                progressBar.style.width = percentComplete + "%";
-                progressPercent.innerText = percentComplete + "%";
-                if (percentComplete === 100) {
-                    progressStatus.innerText = "Processando dados no servidor...";
-                    progressBar.classList.remove("bg-blue-600");
-                    progressBar.classList.add("bg-green-500", "animate-pulse");
-                }
-            }
-        };
-
-        // 2. Load
-        xhr.onload = () => {
-            resetUI();
-            if (xhr.status >= 200 && xhr.status < 300) {
-                try {
-                    const resp = JSON.parse(xhr.responseText);
-                    handleSuccess(resp);
-                } catch (e) {
-                    alert("Erro ao ler resposta: " + e.message);
-                }
-            } else {
-                try {
-                    const errorResp = JSON.parse(xhr.responseText);
-                    alert("Erro: " + (errorResp.error || "Erro desconhecido"));
-                } catch (e) {
-                    alert("Erro " + xhr.status + " no servidor.");
-                }
-            }
-        };
-
-        // 3. Error
-        xhr.onerror = () => {
-            resetUI();
-            alert("Erro de conexão.");
-        };
-
-        xhr.open("POST", "/upload", true);
-        xhr.send(formData);
-
-        function resetUI() {
-            btn.innerText = "Enviar";
-            btn.disabled = false;
-            btn.classList.remove("opacity-50");
-            setTimeout(() => {
-                 progressContainer.classList.add("hidden");
-                 progressBar.classList.add("bg-blue-600");
-                 progressBar.classList.remove("bg-green-500", "animate-pulse");
-            }, 1000);
-        }
-
-        function handleSuccess(resp) {
-            if (!resp.data || !Array.isArray(resp.data)) {
-                alert("Dados inválidos.");
-                return;
-            }
-
-            // Salva dados na variável global para exportação
-            globalData = resp.data;
-
-            document.getElementById("result").classList.remove("hidden");
-            document.getElementById("jsonOutput").innerText = JSON.stringify(resp, null, 2);
-
-            const data = resp.data;
-            const columns = data.length > 0 ? Object.keys(data[0]) : [];
-            
-            // Contagem por LINHA
-            const totalLines = data.length;
-            let notFoundRowsCount = 0;
-
-            data.forEach(row => {
-                const hasErrorInRow = columns.some(col => String(row[col]).trim() === "Não encontrado");
-                if (hasErrorInRow) notFoundRowsCount++;
+        try {
+            const response = await fetch("/upload", {
+                method: "POST",
+                body: formData
             });
 
-            document.getElementById("statTotalLines").innerText = totalLines;
-            document.getElementById("statNotFound").innerText = notFoundRowsCount;
+            if (!response.ok) throw new Error("Erro no servidor");
 
-            renderTable(columns, data);
-        }
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder("utf-8");
+            let buffer = "";
 
-        function renderTable(columns, data) {
-            const tableHead = document.getElementById("tableHead");
-            const tableBody = document.getElementById("tableBody");
-            
-            tableHead.innerHTML = "";
-            tableBody.innerHTML = "";
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
 
-            if (columns.length > 0) {
-                const trTitle = document.createElement("tr");
-                const trFilter = document.createElement("tr");
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                
+                // O último item pode ser incompleto, guardamos no buffer
+                buffer = lines.pop(); 
 
-                columns.forEach((col, index) => {
-                    const th = document.createElement("th");
-                    th.className = "border-b border-r px-4 py-2 text-left font-bold text-gray-700 bg-gray-200 whitespace-nowrap";
-                    th.textContent = col;
-                    trTitle.appendChild(th);
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+                    try {
+                        const jsonRow = JSON.parse(line);
+                        
+                        // SE FOR METADADO (Primeira linha)
+                        if (jsonRow.type === "metadata") {
+                            globalColumns = jsonRow.columns;
+                            document.getElementById("totalProcessCount").innerText = jsonRow.total_rows;
+                            renderHeader(globalColumns);
+                        } 
+                        // SE FOR DADO (Linhas seguintes)
+                        else if (jsonRow.type === "data") {
+                            globalData.push(jsonRow);
+                            currentCount++;
+                            
+                            // Verifica erro
+                            const hasError = globalColumns.some(col => String(jsonRow[col]).trim() === "Não encontrado");
+                            if(hasError) notFoundCount++;
 
-                    const thFilter = document.createElement("th");
-                    thFilter.className = "border-b border-r p-1 bg-gray-100";
-                    const input = document.createElement("input");
-                    input.type = "text";
-                    input.placeholder = `Filtrar...`;
-                    input.className = "w-full text-xs p-1 border rounded focus:outline-none focus:border-blue-500 font-normal";
-                    input.onkeyup = () => filterTable();
-                    thFilter.appendChild(input);
-                    trFilter.appendChild(thFilter);
-                });
-                tableHead.appendChild(trTitle);
-                tableHead.appendChild(trFilter);
-            }
+                            // Atualiza UI
+                            document.getElementById("currentProcessCount").innerText = currentCount;
+                            document.getElementById("statTotalLines").innerText = currentCount;
+                            document.getElementById("statNotFound").innerText = notFoundCount;
 
-            data.forEach(row => { 
-                const tr = document.createElement("tr");
-                tr.className = "odd:bg-white even:bg-slate-50 hover:bg-blue-50 transition-colors";
+                            // Adiciona na tabela
+                            appendRow(jsonRow, globalColumns);
+                            
+                            // Auto-scroll suave
+                            const container = document.getElementById("tableContainer");
+                            container.scrollTop = container.scrollHeight;
+                        }
 
-                columns.forEach(col => {
-                    const td = document.createElement("td");
-                    td.className = "border-b border-r px-4 py-2 whitespace-nowrap";
-                    const cellValue = row[col] !== undefined ? row[col] : '';
-                    td.textContent = cellValue;
-
-                    if (String(cellValue).trim() === "Não encontrado") {
-                        td.classList.add("text-red-600", "font-bold", "bg-red-50");
+                    } catch (e) {
+                        console.error("Erro parsing JSON line", e);
                     }
-                    tr.appendChild(td);
-                });
-                tableBody.appendChild(tr);
-            });
+                }
+            }
+
+        } catch (error) {
+            alert("Erro: " + error.message);
+        } finally {
+            // --- FINALIZAÇÃO ---
+            btn.disabled = false;
+            btn.classList.remove("opacity-50", "cursor-wait");
+            document.body.classList.remove("cursor-wait-override");
+            
+            // Reabilita tabela
+            dataTable.classList.remove("processing-table");
+            document.getElementById("processingIndicator").classList.add("hidden");
+            
+            // Habilita botão de exportar
+            const btnExport = document.getElementById("btnExport");
+            btnExport.disabled = false;
+            btnExport.classList.remove("bg-gray-400", "cursor-not-allowed");
+            btnExport.classList.add("bg-green-600", "hover:bg-green-700");
         }
     };
 
-    // ==========================================
-    // FUNÇÃO DE EXPORTAÇÃO (EXCEL)
-    // ==========================================
-    function exportToExcel() {
-        if (!globalData || globalData.length === 0) {
-            alert("Não há dados para exportar.");
-            return;
-        }
+    // --- RENDERIZADORES ---
+    function renderHeader(columns) {
+        const tableHead = document.getElementById("tableHead");
+        // Linha 1: Títulos
+        const trTitle = document.createElement("tr");
+        const trFilter = document.createElement("tr");
 
-        // 1. Cria uma Worksheet (planilha) a partir do JSON
-        const worksheet = XLSX.utils.json_to_sheet(globalData);
+        columns.forEach((col, index) => {
+            const th = document.createElement("th");
+            th.className = "border-b border-r px-4 py-2 text-left font-bold text-gray-700 bg-gray-200 whitespace-nowrap";
+            th.textContent = col;
+            trTitle.appendChild(th);
 
-        // 2. Cria um Workbook (arquivo Excel)
-        const workbook = XLSX.utils.book_new();
-
-        // 3. Adiciona a planilha ao arquivo
-        XLSX.utils.book_append_sheet(workbook, worksheet, "Dados Processados");
-
-        // 4. Gera e baixa o arquivo
-        XLSX.writeFile(workbook, `${globalFileName}.xlsx`);
+            const thFilter = document.createElement("th");
+            thFilter.className = "border-b border-r p-1 bg-gray-100";
+            const input = document.createElement("input");
+            input.type = "text";
+            input.placeholder = `Filtrar...`;
+            input.className = "w-full text-xs p-1 border rounded font-normal";
+            input.onkeyup = () => filterTable(); // Funciona após tabela estar ativa
+            thFilter.appendChild(input);
+            trFilter.appendChild(thFilter);
+        });
+        tableHead.appendChild(trTitle);
+        tableHead.appendChild(trFilter);
     }
 
-    // Função de Filtro Dinâmico
+    function appendRow(row, columns) {
+        const tableBody = document.getElementById("tableBody");
+        const tr = document.createElement("tr");
+        tr.className = "odd:bg-white even:bg-slate-50 border-b";
+
+        columns.forEach(col => {
+            const td = document.createElement("td");
+            td.className = "border-r px-4 py-2 whitespace-nowrap";
+            const val = row[col] !== null ? row[col] : "";
+            td.textContent = val;
+
+            if (String(val).trim() === "Não encontrado") {
+                td.classList.add("text-red-600", "font-bold", "bg-red-50");
+            }
+            tr.appendChild(td);
+        });
+        tableBody.appendChild(tr);
+    }
+
+    // --- MODAL & EXPORT (Mesma lógica anterior) ---
+    function openModal() {
+        const modal = document.getElementById("exportModal");
+        modal.classList.remove("hidden");
+        setTimeout(() => {
+            modal.querySelector('div[class*="transform"]').classList.remove("modal-enter");
+            modal.querySelector('div[class*="transform"]').classList.add("modal-enter-active");
+        }, 10);
+    }
+    function closeModal() {
+        const modal = document.getElementById("exportModal");
+        modal.querySelector('div[class*="transform"]').classList.remove("modal-enter-active");
+        modal.querySelector('div[class*="transform"]').classList.add("modal-exit-active");
+        setTimeout(() => {
+            modal.classList.add("hidden");
+            modal.querySelector('div[class*="transform"]').classList.remove("modal-exit-active");
+            modal.querySelector('div[class*="transform"]').classList.add("modal-enter");
+        }, 200);
+    }
+
+    function exportToExcel() {
+        if(globalData.length === 0) return;
+        // Remove a chave 'type' antes de exportar
+        const cleanData = globalData.map(({type, ...rest}) => rest);
+        const ws = XLSX.utils.json_to_sheet(cleanData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Dados");
+        XLSX.writeFile(wb, `${globalFileName}_completo.xlsx`);
+        closeModal();
+    }
+
+    function exportToCircuit() {
+        if(globalData.length === 0) return;
+        const circuitData = globalData.map(row => {
+            const seq = row["Sequence"] || "";
+            const quadra = row["Extracted_Quadra"] || "?";
+            const lote = row["Extracted_Lote"] || "?";
+            const obs = `${seq}-${quadra}-${lote}`;
+            return {
+                "Geo_Latitude": row["Geo_Latitude"],
+                "Geo_Longitude": row["Geo_Longitude"],
+                "Observações": obs
+            };
+        });
+        const ws = XLSX.utils.json_to_sheet(circuitData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Circuit");
+        XLSX.writeFile(wb, `${globalFileName}_circuit.xlsx`);
+        closeModal();
+    }
+
+    // Filtro (Simplificado para funcionar depois do load)
     window.filterTable = function() {
         const table = document.getElementById("dataTable");
         const tr = table.getElementsByTagName("tbody")[0].getElementsByTagName("tr");
         const inputs = table.getElementsByTagName("thead")[0].getElementsByTagName("input");
-        
         const filters = [];
         for (let i = 0; i < inputs.length; i++) filters.push(inputs[i].value.toUpperCase());
 
@@ -337,7 +402,6 @@
             tr[i].style.display = showRow ? "" : "none";
         }
     }
-</script>
-
+ </script>
 </body>
 </html>
