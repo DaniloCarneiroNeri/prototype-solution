@@ -28,98 +28,104 @@ HERE_API_KEY = os.getenv("HERE_API_KEY")
 # ============================================================
 def normalize_address(raw):
     """
-    Formata endereços para o padrão: 'RUA/AVENIDA, QUADRA-LOTE'
-    Lógica otimizada para dados inconsistentes (CSV fornecido).
+    Normaliza endereços ao padrão:
+    'RUA/AVENIDA, QUADRA-LOTE'
+    Agora inclui:
+      - Q121 lot 15  →  121-15
+      - Q28L1        →  28-1
+      - Correção automática "Rua Fxx" -> "Rua F-xx"
     """
+
     if pd.isna(raw) or str(raw).strip() == "":
         return ""
 
-    # --- 1. Limpeza Prévia ---
     text = str(raw).strip()
-    # Remove quebras de linha e espaços extras
+
+    # --- 1. Limpeza básica ---
     text = re.sub(r'\s+', ' ', text)
-    # Substitui barras por espaço (ex: "Quadra 119/Lote 14" -> "Quadra 119 Lote 14")
     text = text.replace('/', ' ')
-    # Remove repetições comuns de prefixos para facilitar a busca (ex: "Rua F22... Rua F22")
-    # (A lógica de corte abaixo já resolve isso, mas a limpeza ajuda)
-    
     text_upper = text.upper()
 
-    # --- 2. Extração de Quadra e Lote (Busca Global) ---
+    # -------------------------------------------------------------------------
+    # 2. REGRA ESPECIAL: "Rua Fxx" -> "Rua F-xx" (se não houver quadra/lote)
+    # -------------------------------------------------------------------------
+    # Isso facilita detecção da quadra que vem colada ao prefixo F
+    if re.search(r"\bRUA\s+F(\d+)", text_upper):
+        text = re.sub(r"\b(RUA\s+F)(\d+)", r"\1-\2", text, flags=re.IGNORECASE)
+        text_upper = text.upper()
+
+    # -------------------------------------------------------------------------
+    # 3. Extração QUADRA e LOTE
+    # -------------------------------------------------------------------------
+
     quadra = None
     lote = None
 
-    # Regex poderoso para Quadra:
-    # Captura: "Q 12", "QD 12", "Q.12", "QUADRA 12", "QD.12"
-    # (?:...) agrupa sem capturar, \s* permite espaços opcionais
-    q_pattern = r"(?:\bQUADRA|\bQ\.?D?\.?)\s*([0-9]+[A-Z]?)\b"
-    
-    # Regex poderoso para Lote:
-    # Captura: "L 10", "LT 10", "L.10", "LOTE 10", "LT.10"
-    l_pattern = r"(?:\bLOTE|\bL\.?T?\.?)\s*([0-9]+[A-Z]?)\b"
+    # "Q121", "Q28L1", "QUADRA 30", "QD 12", etc.
+    q_full = re.search(r"\bQ(UADRA)?\.?\s*([0-9]+[A-Z]?)", text_upper)
+    # Captura também Q28L1 → quadra=28, lote=1
+    q_comp = re.search(r"\bQ([0-9]+)[^\d]?L([0-9]+)", text_upper)
 
-    m_q = re.search(q_pattern, text_upper)
-    if m_q:
-        quadra = m_q.group(1)
+    l_regex = re.search(r"\bL(OTE)?\.?\s*([0-9]+[A-Z]?)\b", text_upper)
 
-    m_l = re.search(l_pattern, text_upper)
-    if m_l:
-        lote = m_l.group(1)
+    if q_full:
+        quadra = q_full.group(2)
 
-    # --- 3. Fallback: Padrão "XX-YY" ---
-    # Só aciona se não encontrou Q e L explicitamente, para evitar pegar números de telefone ou CEP.
-    is_fallback = False
-    fallback_match = None
+    if l_regex:
+        lote = l_regex.group(2)
+
+    if q_comp:  # Ex: Q28L1
+        quadra = quadra or q_comp.group(1)
+        lote = lote or q_comp.group(2)
+
+    # -------------------------------------------------------------------------
+    # 4. Fallback tipo "15-20"
+    # -------------------------------------------------------------------------
     if not (quadra and lote):
-        # Procura por "Numero - Numero" (ex: "Rua das Flores 15-20")
-        fb_pattern = r"\b([0-9]+[A-Z]?)\s*-\s*([0-9]+[A-Z]?)\b"
-        m_fb = re.search(fb_pattern, text) # Usa text original para não perder case se necessário (mas aqui é numero)
-        if m_fb:
-            quadra = quadra or m_fb.group(1).upper()
-            lote = lote or m_fb.group(2).upper()
-            is_fallback = True
-            fallback_match = m_fb
+        fb = re.search(r"\b([0-9]+)\s*-\s*([0-9]+)\b", text)
+        if fb:
+            quadra = quadra or fb.group(1)
+            lote = lote or fb.group(2)
 
-    # --- 4. Extração da Rua (O Corte Cirúrgico) ---
-    # O nome da rua vai do início até o PRIMEIRO separador encontrado.
-    # Separadores: Vírgula, Traço isolado, ou o início da Quadra/Lote.
-    
+    # -------------------------------------------------------------------------
+    # 5. Extração do nome da rua
+    # -------------------------------------------------------------------------
     cut_index = len(text)
-    
-    # Lista de separadores textuais comuns
     separators = [",", " - ", " Nº", " NUMERO", " CASA", " APT", " APTO"]
-    
+
     for sep in separators:
         idx = text_upper.find(sep)
-        if idx != -1 and idx < cut_index:
-            cut_index = idx
+        if idx != -1:
+            cut_index = min(cut_index, idx)
 
-    # Se achou Quadra ou Lote via Regex, o nome da rua TEM que acabar antes deles
-    if m_q and m_q.start() < cut_index:
-        cut_index = m_q.start()
-    if m_l and m_l.start() < cut_index:
-        cut_index = m_l.start()
-    if is_fallback and fallback_match and fallback_match.start() < cut_index:
-        cut_index = fallback_match.start()
+    # rua termina antes da primeira ocorrência real das marcações Q/L
+    scan_positions = []
 
-    street = text[:cut_index].strip()
-    
-    # Limpeza final da rua (remove pontuação sobrando no final)
-    street = street.rstrip(" ,-./")
+    if q_full: scan_positions.append(q_full.start())
+    if l_regex: scan_positions.append(l_regex.start())
+    if q_comp: scan_positions.append(q_comp.start())
 
-    # --- 5. Formatação Final ---
-    
-    # Validação de dados inválidos
-    invalid_values = ['0', '00', 'SN', 'S/N', 'NULL']
-    if quadra and quadra.upper() in invalid_values: quadra = None
-    if lote and lote.upper() in invalid_values: lote = None
+    for pos in scan_positions:
+        if pos < cut_index:
+            cut_index = pos
 
+    street = text[:cut_index].strip().rstrip(" ,-./")
+
+    # -------------------------------------------------------------------------
+    # 6. Validação
+    # -------------------------------------------------------------------------
+    invalid = {"0", "00", "SN", "S/N", "NULL"}
+    if quadra and quadra.upper() in invalid:
+        quadra = None
+    if lote and lote.upper() in invalid:
+        lote = None
+
+    # -------------------------------------------------------------------------
+    # 7. Montagem final
+    # -------------------------------------------------------------------------
     if quadra and lote:
         return f"{street}, {quadra}-{lote}"
-    
-    # Se não achou Q/L (ex: é um prédio ou endereço simples), retorna só a rua limpa
-    # Se quiser forçar que apareça algo, poderia colocar um 'S/N'. 
-    # Mas o padrão pedido é estrito.
+
     return street
 
 
