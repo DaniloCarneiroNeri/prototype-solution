@@ -1,0 +1,47 @@
+version: "3.9"
+
+services:
+  node-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: node-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+    volumes:
+      - ./frontend:/app        # Em desenvolvimento, o front pode usar volume
+      - /app/node_modules
+    depends_on:
+      - python-backend
+    networks:
+      - app-network
+
+  python-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: python-backend
+    ports:
+      - "8000:8000"
+
+    # 🔥 O .env agora será carregado corretamente
+    env_file:
+      - .env
+
+    # 🔥 Agora a variável NÃO será truncada
+    environment:
+      HERE_API_KEY: "${HERE_API_KEY}"
+      PYTHONUNBUFFERED: 1
+
+    # ❗ REMOVIDO O VOLUME PARA NÃO QUEBRAR O BACKEND
+    # volumes:
+    #   - ./backend:/app   ← isto estava quebrando tudo e foi removido
+
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
