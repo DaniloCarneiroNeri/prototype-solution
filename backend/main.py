@@ -51,19 +51,21 @@ def normalize_address(raw):
 
         # -------------------------------------------------------------------------
         # 2. Regex tolerantes p/ QUADRA e LOTE
-        # Aceita: Q, QD, QD., QDRA, QUDRA, QUDRA, QUADRA, QUAD, etc.
+        # Inclui versões com ":"  → Quadra:07 | Lote:07
         # -------------------------------------------------------------------------
-        
+
+        # QUADRA — inclui: q, qd, qdra, quadra, quad, quad:, q:, qd:, quadra:
         q_full = re.search(
-            r"\bQ(?:U?A?D?R?A?)?\.?\s*([0-9]+[A-Z]?)\b",
+            r"\bQ(?:U?A?D?R?A?)?[:\.\s]*([0-9]+[A-Z]?)\b",
             text_upper
         )
 
-        # Ex: Q28L1
+        # Q28L1
         q_comp = re.search(r"\bQ([0-9]+)[^\d]?L([0-9]+)\b", text_upper)
 
+        # LOTE — inclui: l, lt, lote, lote:, l:
         l_full = re.search(
-            r"\bL(?:O?T?E?)?\.?\s*([0-9]+[A-Z]?)\b",
+            r"\bL(?:O?T?E?)?[:\.\s]*([0-9]+[A-Z]?)\b",
             text_upper
         )
 
@@ -71,14 +73,14 @@ def normalize_address(raw):
         lote = None
 
         if q_full:
-            quadra = q_full.group(1)
+            quadra = q_full.group(1).lstrip("0") or "0"
 
         if q_comp:
-            quadra = quadra or q_comp.group(1)
-            lote = lote or q_comp.group(2)
+            quadra = quadra or (q_comp.group(1).lstrip("0") or "0")
+            lote = lote or (q_comp.group(2).lstrip("0") or "0")
 
         if l_full:
-            lote = lote or l_full.group(1)
+            lote = lote or (l_full.group(1).lstrip("0") or "0")
 
         # -------------------------------------------------------------------------
         # 3. Fallback "15-20"
@@ -86,8 +88,8 @@ def normalize_address(raw):
         if not (quadra and lote):
             fb = re.search(r"\b([0-9]+)\s*-\s*([0-9]+)\b", text)
             if fb:
-                quadra = quadra or fb.group(1)
-                lote = lote or fb.group(2)
+                quadra = quadra or fb.group(1).lstrip("0")
+                lote = lote or fb.group(2).lstrip("0")
 
         # -------------------------------------------------------------------------
         # 4. Definição da rua (com proteção anti None)
@@ -101,7 +103,6 @@ def normalize_address(raw):
             if idx != -1 and idx < cut_index:
                 cut_index = idx
 
-        # Usa apenas matchs que EXISTEM (None é ignorado)
         regex_positions = [
             q_full.start() if q_full else None,
             l_full.start() if l_full else None,
@@ -132,7 +133,6 @@ def normalize_address(raw):
         return street
 
     except Exception as e:
-        # Nunca deixe o backend morrer → evita 502
         return f"[ERRO-NORMALIZE] {str(e)}"
 
 
