@@ -190,7 +190,7 @@ async def upload_file(file: UploadFile = File(...)):
         raise HTTPException(422, "Colunas obrigatórias ausentes")
 
     df["Normalized_Address"] = df.apply(
-    lambda r: normalize_address(r["Destination Address"], r.get("Bairro", "")),
+    lambda r: normalize_address(r["Destination Address"]),
     axis=1)
 
     final_lat = []
