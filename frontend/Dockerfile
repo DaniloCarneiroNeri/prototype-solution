@@ -1,26 +1,31 @@
-# frontend/Dockerfile
-# (path: frontend/Dockerfile)
-FROM node:18-alpine
+# =============================
+# Base image (não usar Alpine)
+# =============================
+FROM node:18-slim
 
-# Use a non-root user (safer)
-RUN addgroup -S app && adduser -S -G app app
+# Cria usuário sem privilégios (melhor prática)
+RUN addgroup --system app && adduser --system --group app
 
 WORKDIR /app
 
-# Copia apenas deps primeiro para cache eficaz
+# Copia apenas os manifestos primeiro (cache melhor)
 COPY package.json package-lock.json* ./
 
-# Instala apenas prod dependencies
-RUN npm ci --only=production
+# Instala dependências (prod + dev se necessário)
+RUN npm ci
 
-# Copia o resto do código
+# Copia o restante do projeto
 COPY . .
 
-# Ajusta permissões e usuário
+# Permissões
 RUN chown -R app:app /app
 USER app
 
 EXPOSE 3000
 
-# Start do seu servidor Node (server.js)
+# Healthcheck recomendado pelo Render
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s \
+  CMD node -e "require('http').get('http://localhost:3000', r => process.exit(0)).on('error', e => process.exit(1))"
+
+# Comando inicial
 CMD ["node", "server.js"]

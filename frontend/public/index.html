@@ -133,3 +133,29 @@
 
 </body>
 </html>
+
+<script>
+  const BACKEND_URL = "https://prototype-solution.onrender.com";
+
+  async function checkAuth() {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      window.location.href = "/login";
+      return;
+    }
+
+    const res = await fetch(`${BACKEND_URL}/me?token=${token}`);
+
+    if (!res.ok) {
+      localStorage.removeItem("token");
+      window.location.href = "/login";
+      return;
+    }
+
+    const data = await res.json();
+    console.log("Usuário autenticado:", data.username);
+  }
+
+  checkAuth();
+</script>
+

@@ -9,6 +9,10 @@ import pandas as pd
 import aiohttp
 from io import BytesIO
 from typing import Optional
+from sqlalchemy.orm import Session
+from database import SessionLocal, engine
+from models import Base, User
+from auth import hash_password, verify_password, create_jwt
 
 app = FastAPI()
 
@@ -19,6 +23,61 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
+class UserRegister(BaseModel):
+    username: str
+    password: str
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# ===============================
+# REGISTER
+# ===============================
+@app.post("/register")
+def register(data: UserRegister, db: Session = Depends(get_db)):
+
+    user_exist = db.query(User).filter(User.username == data.username).first()
+    if user_exist:
+        raise HTTPException(400, "Usuário já existe")
+
+    new_user = User(
+        username=data.username,
+        hashed_password=hash_password(data.password)
+    )
+
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    return {"msg": "Usuário criado com sucesso"}
+
+
+# ===============================
+# LOGIN
+# ===============================
+@app.post("/login")
+def login(credentials: UserLogin, db: Session = Depends(get_db)):
+
+    user = db.query(User).filter(User.username == credentials.username).first()
+
+    if not user or not verify_password(credentials.password, user.hashed_password):
+        raise HTTPException(401, "Credenciais inválidas")
+
+    token = create_jwt({"sub": user.username})
+
+    return {
+        "access_token": token,
+        "token_type": "bearer"
+    }
 
 HERE_API_KEY = os.getenv("HERE_API_KEY")
 

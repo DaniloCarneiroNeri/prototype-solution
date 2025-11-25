@@ -1,6 +1,8 @@
 fastapi
-uvicorn
-pandas
-openpyxl
-aiohttp
+uvicorn[standard]
 python-multipart
+SQLAlchemy
+psycopg2-binary
+passlib[bcrypt]
+python-jose
+python-dotenv
