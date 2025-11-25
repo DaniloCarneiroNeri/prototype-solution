@@ -22,115 +22,118 @@ app.add_middleware(
 
 HERE_API_KEY = os.getenv("HERE_API_KEY")
 
-BAIRROS_RETRY = {
-    "SETOR FAIÇALVILLE",
-    "FAIÇALVILLE II",
-    "JARDIM VILA BOA"
-}
 
 # ============================================================
 # NORMALIZAÇÃO DO ENDEREÇO
 # ============================================================
-def normalize_address(raw, bairro=""):
+def normalize_address(raw):
     """
-    Normaliza endereço. Se quadra/lote não encontrados e bairro ∈ BAIRROS_RETRY:
-    troca para 'Novo Horizonte' e tenta novamente.
+    Normaliza endereços ao padrão:
+    'RUA/AVENIDA, QUADRA-LOTE'
+    Com tratamento seguro (sem exceções).
     """
 
-    def _normalize(text):
-        # -------------------------
-        # Bloco interno reutilizável
-        # -------------------------
-        text = str(text).strip()
+    try:
+        if pd.isna(raw) or str(raw).strip() == "":
+            return ""
+
+        text = str(raw).strip()
         text = re.sub(r'\s+', ' ', text)
         text = text.replace('/', ' ')
         text_upper = text.upper()
 
-        # Rua Fxx → Rua F-xx
-        text = re.sub(
-            r"\b(RUA\s+F)(\d+)\b",
-            r"\1-\2",
-            text,
-            flags=re.IGNORECASE
+        # -------------------------------------------------------------------------
+        # 1. Regra especial: Rua Fxx -> Rua F-xx
+        # -------------------------------------------------------------------------
+        if re.search(r"\bRUA\s+F(\d+)\b", text_upper):
+            text = re.sub(r"\b(RUA\s+F)(\d+)\b", r"\1-\2", text, flags=re.IGNORECASE)
+            text_upper = text.upper()
+
+        # -------------------------------------------------------------------------
+        # 2. Regex tolerantes p/ QUADRA e LOTE
+        # Aceita: Q, QD, QD., QDRA, QUDRA, QUDRA, QUADRA, QUAD, etc.
+        # -------------------------------------------------------------------------
+        
+        q_full = re.search(
+            r"\bQ(?:U?A?D?R?A?)?\.?\s*([0-9]+[A-Z]?)\b",
+            text_upper
         )
-        text_upper = text.upper()
 
-        quadra = lote = None
-
-        # Regex tolerantes
-        q_full = re.search(r"\bQ(?:U?A?D?R?A?)?\.?\s*([0-9]+[A-Z]?)\b", text_upper)
+        # Ex: Q28L1
         q_comp = re.search(r"\bQ([0-9]+)[^\d]?L([0-9]+)\b", text_upper)
-        l_full = re.search(r"\bL(?:O?T?E?)?\.?\s*([0-9]+[A-Z]?)\b", text_upper)
+
+        l_full = re.search(
+            r"\bL(?:O?T?E?)?\.?\s*([0-9]+[A-Z]?)\b",
+            text_upper
+        )
+
+        quadra = None
+        lote = None
 
         if q_full:
             quadra = q_full.group(1)
+
         if q_comp:
             quadra = quadra or q_comp.group(1)
             lote = lote or q_comp.group(2)
+
         if l_full:
             lote = lote or l_full.group(1)
 
-        # fallback 15-20
+        # -------------------------------------------------------------------------
+        # 3. Fallback "15-20"
+        # -------------------------------------------------------------------------
         if not (quadra and lote):
             fb = re.search(r"\b([0-9]+)\s*-\s*([0-9]+)\b", text)
             if fb:
                 quadra = quadra or fb.group(1)
                 lote = lote or fb.group(2)
 
-        # cortar rua
+        # -------------------------------------------------------------------------
+        # 4. Definição da rua (com proteção anti None)
+        # -------------------------------------------------------------------------
         cut_index = len(text)
+
         separators = [",", " - ", " Nº", " NUMERO", " CASA", " APT", " APTO"]
+
         for sep in separators:
             idx = text_upper.find(sep)
             if idx != -1 and idx < cut_index:
                 cut_index = idx
 
-        # posições seguras
-        for pos in [q_full.start() if q_full else None,
-                    l_full.start() if l_full else None,
-                    q_comp.start() if q_comp else None]:
+        # Usa apenas matchs que EXISTEM (None é ignorado)
+        regex_positions = [
+            q_full.start() if q_full else None,
+            l_full.start() if l_full else None,
+            q_comp.start() if q_comp else None,
+        ]
+
+        for pos in regex_positions:
             if pos is not None and pos < cut_index:
                 cut_index = pos
 
         street = text[:cut_index].strip().rstrip(" ,-./")
 
-        # validar "s/n"
+        # -------------------------------------------------------------------------
+        # 5. Sanitização
+        # -------------------------------------------------------------------------
         invalid = {"0", "00", "SN", "S/N", "NULL"}
         if quadra and quadra.upper() in invalid:
             quadra = None
         if lote and lote.upper() in invalid:
             lote = None
 
+        # -------------------------------------------------------------------------
+        # 6. Resultado final SEM EXCEÇÕES
+        # -------------------------------------------------------------------------
         if quadra and lote:
             return f"{street}, {quadra}-{lote}"
 
-        # sem quadra/lote
         return street
 
-    # ---------------------------------------------------------
-    # PRIMEIRA TENTATIVA
-    # ---------------------------------------------------------
-    result = _normalize(raw)
-
-    # Detectar se rua sem quadra/lote → "não encontrado"
-    nao_encontrou = "-" not in result and "QUADRA" not in result.upper()
-
-    # ---------------------------------------------------------
-    # REGRAS DE RETENTATIVA POR BAIRRO
-    # ---------------------------------------------------------
-    if nao_encontrou:
-        bairro_upper = str(bairro).strip().upper()
-
-        if bairro_upper in BAIRROS_RETRY:
-            # modificar bairro → Novo Horizonte
-            novo_endereco = f"{raw}, Novo Horizonte"
-
-            # TENTAR NOVAMENTE
-            result_retry = _normalize(novo_endereco)
-
-            return result_retry
-
-    return result
+    except Exception as e:
+        # Nunca deixe o backend morrer → evita 502
+        return f"[ERRO-NORMALIZE] {str(e)}"
 
 
 # ============================================================
@@ -197,6 +200,7 @@ async def upload_file(file: UploadFile = File(...)):
         normalized = row["Normalized_Address"]
         cep_original = str(row["Zipcode/Postal code"]).strip()
         bairro = row.get("Bairro", "")
+        bairro_upper = bairro.upper()
 
         # -------------------------------
         # 1️⃣ Primeira tentativa
@@ -222,7 +226,26 @@ async def upload_file(file: UploadFile = File(...)):
             final_lat.append(lat2)
             final_lng.append(lng2)
             continue
+        # -----------------------------------------------
+        # 3️⃣ Terceira tentativa (substituir bairro → Novo Horizonte)
+        #    Somente nos bairros autorizados
+        # -----------------------------------------------
+        BAIRROS_RETRY = {
+            "SETOR FAIÇALVILLE",
+            "FAIÇALVILLE II",
+            "JARDIM VILA BOA"
+        }    
 
+        if bairro_upper in BAIRROS_RETRY:
+            third_query = f"{normalized}, Novo Horizonte"
+            lat3, lng3, cep_here3 = await geocode_with_here(third_query)
+
+            match_ok3 = cep_here3 and cep_here3.replace("-", "") == cep_original.replace("-", "")
+
+            if match_ok3:
+                final_lat.append(lat3)
+                final_lng.append(lng3)
+                continue
         # -------------------------------
         # 3️⃣ Falhou → "Não encontrado"
         # -------------------------------
