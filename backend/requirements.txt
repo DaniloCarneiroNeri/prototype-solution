@@ -6,3 +6,8 @@ psycopg2-binary
 passlib[bcrypt]
 python-jose
 python-dotenv
+
+# necessários para Excel + leitura de planilhas
+pandas
+openpyxl
+xlrd
