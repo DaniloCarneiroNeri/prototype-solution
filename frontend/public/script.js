@@ -97,26 +97,36 @@ document.getElementById("btnUpload").onclick = () => {
     }
 
     function handleSuccess(resp) {
-        globalData = resp.data;
 
-        document.getElementById("result").classList.remove("hidden");
-        document.getElementById("jsonOutput").innerText = JSON.stringify(resp, null, 2);
+    let data = resp.data;
 
-        const data = resp.data;
-        const columns = data.length ? Object.keys(data[0]) : [];
+    data = data.map(row => {
+        const cleaned = { ...row };
+        delete cleaned["Partial_Match"];
+        delete cleaned["Unnamed: 0"];
+        return cleaned;
+    });
 
-        const total = data.length;
-        let notFound = 0;
+    data = data.filter(row => {
+        return Object.values(row).some(v => v !== null && v !== "" && v !== undefined);
+    });
 
-        data.forEach(row => {
-            if (Object.values(row).includes("Não encontrado")) notFound++;
-        });
+    globalData = data;
+    document.getElementById("result").classList.remove("hidden");
+    document.getElementById("jsonOutput").innerText = JSON.stringify(resp, null, 2);
 
-        document.getElementById("statTotalLines").innerText = total;
-        document.getElementById("statNotFound").innerText = notFound;
+    const columns = data.length ? Object.keys(data[0]) : [];
 
-        renderTable(columns, data);
-    }
+    document.getElementById("statTotalLines").innerText = data.length;
+
+    let notFound = data.filter(row =>
+        Object.values(row).includes("Não encontrado")
+    ).length;
+
+    document.getElementById("statNotFound").innerText = notFound;
+
+    renderTable(columns, data);
+}
 };
 
 // =========================
@@ -135,8 +145,9 @@ function renderTable(columns, data) {
     if (columns.length) {
         const trTitle = document.createElement("tr");
         const trFilter = document.createElement("tr");
+        const hiddenCols = ["Partial_Match", "Unnamed: 0"];
 
-        columns.forEach(col => {
+        columns.filter(c => !hiddenCols.includes(c)).forEach(col => {
             const th = document.createElement("th");
             th.className = "border-b border-r px-4 py-2 text-left font-bold bg-gray-200";
             th.textContent = col;
@@ -181,7 +192,11 @@ function addRow(row, columns) {
     const tr = document.createElement("tr");
     tr.className = "odd:bg-white even:bg-slate-50 hover:bg-blue-50";
 
-   columns.forEach(col => {
+    // oculta colunas internas mesmo se aparecerem por engano
+    const hiddenCols = ["Partial_Match", "Unnamed: 0"];
+
+    columns.forEach(col => {
+    if (hiddenCols.includes(col)) return;
     const td = document.createElement("td");
     const value = row[col] ?? "";
 

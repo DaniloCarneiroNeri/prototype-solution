@@ -7,60 +7,35 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
   <style>
-    .table-container {
-      max-height: 60vh;
-      overflow-y: auto;
-      position: relative;
-    }
-    thead th {
-      position: sticky;
-      top: 0;
-      z-index: 20;
-      background-color: #e5e7eb;
-    }
-    thead tr:nth-child(2) th {
-      top: 45px;
-      z-index: 20;
-    }
-    tfoot {
-        position: sticky;
-        bottom: 0;
-        z-index: 20;
-        background-color: #f3f4f6;
-        border-top: 2px solid #d1d5db;
-    }
-    .progress-bar-fill {
-        transition: width 0.3s ease;
-    }
+    .table-container { max-height: 60vh; overflow-y: auto; position: relative; }
+    thead th { position: sticky; top: 0; z-index: 20; background-color: #e5e7eb; }
+    thead tr:nth-child(2) th { top: 45px; z-index: 20; }
+    tfoot { position: sticky; bottom: 0; z-index: 20; background-color: #f3f4f6; border-top: 2px solid #d1d5db; }
+    .progress-bar-fill { transition: width 0.3s ease; }
   </style>
 </head>
 
 <body class="bg-gray-100 h-screen w-screen flex flex-col">
 
 <header class="bg-blue-700 text-white p-4 shadow-md flex items-center gap-3">
-    <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-            d="M9 20l-5.447-2.724A2 2 0 013 15.382V6a2 2 0 012-2h1m5 0h1a2 2 0 012 2v7.382a2 2 0 01-1.553 1.894L9 20zm0 0h6" />
+    <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 20l-5.447-2.724A2 2 0 013 15.382V6a2 2 0 012-2h1m5 0h1a2 2 0 012 2v7.382a2 2 0 01-1.553 1.894L9 20zm0 0h6" />
     </svg>
     <h1 class="text-2xl font-bold tracking-wide">Route Planner</h1>
 </header>
 
-  <main class="flex-1 overflow-auto p-6">
+<main class="flex-1 overflow-auto p-6">
     <div class="w-full bg-white shadow rounded-xl p-6">
 
       <!-- UPLOAD -->
       <div class="mb-6">
         <label class="block text-gray-800 mb-2 font-semibold">Selecione um arquivo .xlsx</label>
         <div class="flex gap-4">
-            <input 
-              id="fileInput" 
-              type="file" 
-              accept=".xlsx"
-              class="flex-1 border border-gray-300 p-3 rounded-lg cursor-pointer hover:border-gray-400"
-            >
-            <button 
-                id="btnUpload"
-                class="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 transition-colors font-semibold shadow-md">
+            <input id="fileInput" type="file" accept=".xlsx"
+                   class="flex-1 border p-3 rounded-lg cursor-pointer hover:border-gray-400">
+            <button id="btnUpload"
+                    class="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 transition shadow-md">
                 Enviar
             </button>
         </div>
@@ -71,7 +46,7 @@
                 <span id="progressPercent" class="text-sm font-medium text-blue-700">0%</span>
             </div>
             <div class="w-full bg-gray-200 rounded-full h-4 shadow-inner overflow-hidden">
-                <div id="progressBar" class="bg-blue-600 h-4 rounded-full progress-bar-fill" style="width: 0%"></div>
+                <div id="progressBar" class="bg-blue-600 h-4 rounded-full progress-bar-fill" style="width:0"></div>
             </div>
         </div>
 
@@ -82,14 +57,12 @@
         
         <div class="flex justify-between items-center mb-4 border-b pb-2">
             <h2 class="text-2xl font-semibold text-gray-800">Resultado da Análise</h2>
-            
-            <button 
-                id="btnExport"
-                onclick="openPopup()"
-                class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded inline-flex items-center transition-colors shadow-sm">
+
+            <button id="btnExport" onclick="openPopup()"
+                    class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded flex items-center shadow-sm">
                 <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    <path stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                 </svg>
                 Exportar
             </button>
@@ -97,7 +70,7 @@
 
         <div class="border border-gray-300 rounded-lg shadow-sm bg-white">
             <div class="table-container rounded-t-lg">
-                <table class="min-w-full text-sm border-collapse opacity-100" id="dataTable">
+                <table class="min-w-full text-sm border-collapse" id="dataTable">
                     <thead id="tableHead"></thead>
                     <tbody id="tableBody"></tbody>
                     <tfoot class="text-gray-700 font-semibold bg-gray-100">
@@ -123,32 +96,31 @@
 
       </div>
     </div>
-  </main>
+</main>
 
-  <!-- POPUP EXPORTAÇÃO -->
-  <div id="exportPopup" class="fixed inset-0 bg-black bg-opacity-40 hidden items-center justify-center">
+<!-- POPUP -->
+<div id="exportPopup" class="fixed inset-0 bg-black bg-opacity-40 hidden items-center justify-center">
     <div class="bg-white p-6 rounded-xl shadow-xl w-80">
       <h2 class="text-xl font-bold mb-4 text-gray-800">Exportar dados</h2>
 
       <button id="popupExportExcel"
-        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded mb-3">
+              class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded mb-3">
         Exportar Excel
       </button>
 
       <button id="popupExportCircuit"
-        class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded">
+              class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded">
         Exportar para Circuit
       </button>
 
       <button onclick="closePopup()"
-        class="w-full mt-4 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded">
+              class="w-full mt-4 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded">
         Cancelar
       </button>
     </div>
-  </div>
+</div>
 
-  <!-- SCRIPT EXTERNO -->
-  <script src="script.js"></script>
+<script src="script.js"></script>
 
 </body>
 </html>
