@@ -238,7 +238,9 @@ async def upload_file(file: UploadFile = File(...)):
         "data": records
     }
 
-
+@app.get("/")
+def root():
+    return {"status": "ok", "message": "Backend online"}
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000)
