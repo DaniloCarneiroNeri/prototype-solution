@@ -199,7 +199,8 @@ async def upload_file(file: UploadFile = File(...)):
     for idx, row in df.iterrows():
         normalized = row["Normalized_Address"]
         cep_original = str(row["Zipcode/Postal code"]).strip()
-        bairro = row.get("Bairro", "")
+        bairro_raw = row.get("Bairro", "")
+        bairro = "" if pd.isna(bairro_raw) else str(bairro_raw).strip()
         bairro_upper = bairro.upper()
 
         # -------------------------------
