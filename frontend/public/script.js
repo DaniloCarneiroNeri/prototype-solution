@@ -124,7 +124,7 @@ document.getElementById("btnUpload").onclick = () => {
     ).length;
 
     document.getElementById("statNotFound").innerText = notFound;
-
+    
     let partial = data.filter(r => r["Partial_Match"] === true).length;
     document.getElementById("statPartial").innerText = partial;
 
@@ -221,7 +221,7 @@ function addRowFixed(row, visibleCols) {
         if (row["Partial_Match"] === true &&
             (col === "Geo_Latitude" || col === "Geo_Longitude")) {
 
-            td.classList.add("bg-yellow-100", "font-bold", "text-yellow-900");
+            td.classList.add("bg-yellow-100", "text-yellow-900");
             td.title = "Endereço encontrado parcialmente - VERIFIQUE";
         }
 

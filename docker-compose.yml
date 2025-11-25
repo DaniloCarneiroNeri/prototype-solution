@@ -1,72 +1,31 @@
 version: "3.9"
 
 services:
-
-  # =======================
-  # PostgreSQL
-  # =======================
-  db:
-    image: postgres:15
-    container_name: postgres_db
-    restart: always
-    environment:
-      POSTGRES_DB: route_planner
-      POSTGRES_USER: route_user
-      POSTGRES_PASSWORD: route_pass
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - app-network
-
-  # =======================
-  # BACKEND FASTAPI
-  # =======================
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: backend
-    restart: always
-    env_file:
-      - .env
-    environment:
-      DATABASE_URL: "postgresql://route_user:route_pass@db:5432/route_planner"
-      HERE_API_KEY: "${HERE_API_KEY}"
-      PYTHONUNBUFFERED: 1
-    depends_on:
-      - db
-    ports:
-      - "8000:8000"
-    networks:
-      - app-network
-
-  # =======================
-  # FRONTEND NODE
-  # =======================
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: frontend
-    restart: always
-    environment:
-      BACKEND_URL: "http://backend:8000"
-      PYTHON_URL: "http://backend:8000/upload"
-    depends_on:
-      - backend
     ports:
       - "3000:3000"
     networks:
       - app-network
 
-# =======================
-# NETWORK + VOLUMES
-# =======================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: backend
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    environment:
+      PYTHONUNBUFFERED: 1
+      HERE_API_KEY: "${HERE_API_KEY}"
+    networks:
+      - app-network
+
 networks:
   app-network:
     driver: bridge
-
-volumes:
-  postgres_data:

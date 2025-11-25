@@ -5,48 +5,52 @@ import cors from "cors";
 import fs from "fs";
 import multer from "multer";
 import path from "path";
-import axios from "axios";
-import FormData from "form-data";
-import { fileURLToPath } from "url";
 
-// ======== FIX PARA __dirname ========
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// ======== CONFIGURAÇÃO DO BACKEND ========
+const PYTHON_URL =
+  process.env.PYTHON_URL || "http://localhost:8000/upload";
 
-// ======== CONFIGURAÇÃO BACKENDS ========
-const PYTHON_URL = process.env.PYTHON_URL || "http://localhost:8000/upload";
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
-
-console.log("🚀 PYTHON_URL:", PYTHON_URL);
-console.log("🚀 BACKEND_URL:", BACKEND_URL);
+console.log("🚀 PYTHON_URL ativo:", PYTHON_URL);
 
 const app = express();
 const upload = multer({ dest: "uploads/" });
 
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
 app.use(cors());
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.json());
+app.use(express.static("public"));
 
-// ======================================
-// UPLOAD PARA O FASTAPI
-// ======================================
+// ======== ROTA DE UPLOAD ========
 app.post("/upload", upload.single("file"), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: "Nenhum arquivo enviado." });
+    if (!req.file) {
+      return res.status(400).json({ error: "Nenhum arquivo enviado." });
+    }
 
     const fileBuffer = fs.readFileSync(req.file.path);
 
-    const form = new FormData();
-    form.append("file", fileBuffer, req.file.originalname);
+    // Node 18 → usa Blob nativo
+    const blob = new Blob([fileBuffer]);
 
-    const response = await axios.post(PYTHON_URL, form, {
-      headers: form.getHeaders()
+    // Node 18 → FormData nativo
+    const form = new FormData();
+    form.append("file", blob, req.file.originalname);
+
+    // ======== ENVIA PARA O BACKEND CORRETO ========
+    const response = await fetch(PYTHON_URL, {
+      method: "POST",
+      body: form
     });
 
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error("BACKEND ERROR:", errText);
+      throw new Error(`Backend retornou status ${response.status}`);
+    }
+
+    const json = await response.json();
     fs.unlinkSync(req.file.path);
 
-    return res.json(response.data);
+    return res.json(json);
 
   } catch (err) {
     console.error("UPLOAD ERROR:", err);
@@ -57,52 +61,11 @@ app.post("/upload", upload.single("file"), async (req, res) => {
   }
 });
 
-// ======================================
-// ROTA DE LOGIN (HTML)
-// ======================================
-app.get("/login", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "login.html"));
+// ======== FRONTEND ROOT ========
+app.get("/", (req, res) => {
+  res.sendFile(path.join(path.resolve(), "public/index.html"));
 });
 
-// ======================================
-// POST LOGIN → chama backend FastAPI
-// ======================================
-app.post("/login", async (req, res) => {
-  try {
-    const { username, password } = req.body;
-
-    const response = await axios.post(`${BACKEND_URL}/login`, {
-      username,
-      password,
-    });
-
-    return res.json(response.data);
-
-  } catch (error) {
-    console.log(error);
-    return res.status(401).json({ msg: "Login inválido" });
-  }
-});
-
-// ======================================
-// MIDDLEWARE DE AUTENTICAÇÃO
-// ======================================
-function authMiddleware(req, res, next) {
-  const token = req.headers.authorization || req.query.token;
-
-  if (!token) return res.redirect("/login");
-  next();
-}
-
-// ======================================
-// DASHBOARD (INDEX.HTML)
-// ======================================
-app.get("/", authMiddleware, (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
-});
-
-// ======================================
-// START SERVER
-// ======================================
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Frontend rodando na porta ${PORT}`));
+app.listen(3000, () =>
+  console.log("Frontend rodando em http://localhost:3000")
+);

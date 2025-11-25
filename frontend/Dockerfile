@@ -1,23 +1,26 @@
 # frontend/Dockerfile
-FROM node:18-slim
+# (path: frontend/Dockerfile)
+FROM node:18-alpine
 
-# criar usuário sem permissões
-RUN addgroup --system app && adduser --system --group app
+# Use a non-root user (safer)
+RUN addgroup -S app && adduser -S -G app app
 
 WORKDIR /app
 
-# copiar manifestos
+# Copia apenas deps primeiro para cache eficaz
 COPY package.json package-lock.json* ./
 
-# instala todas as dependências corretamente
-RUN npm install
+# Instala apenas prod dependencies
+RUN npm ci --only=production
 
-# copia o restante do código
+# Copia o resto do código
 COPY . .
 
+# Ajusta permissões e usuário
 RUN chown -R app:app /app
 USER app
 
 EXPOSE 3000
 
+# Start do seu servidor Node (server.js)
 CMD ["node", "server.js"]

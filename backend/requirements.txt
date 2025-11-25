@@ -1,14 +1,6 @@
 fastapi
-uvicorn[standard]
-python-multipart
-SQLAlchemy
-psycopg2-binary
-passlib[bcrypt]
-python-jose
-python-dotenv
-aiohttp
-
-# necessários para Excel + leitura de planilhas
+uvicorn
 pandas
 openpyxl
-xlrd
+aiohttp
+python-multipart
