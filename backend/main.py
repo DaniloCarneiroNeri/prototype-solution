@@ -195,6 +195,7 @@ async def upload_file(file: UploadFile = File(...)):
 
     final_lat = []
     final_lng = []
+    partial_flags = [] 
 
     for idx, row in df.iterrows():
         normalized = row["Normalized_Address"]
@@ -213,6 +214,7 @@ async def upload_file(file: UploadFile = File(...)):
         if match_ok:
             final_lat.append(lat)
             final_lng.append(lng)
+            partial_flags.append(False)
             continue
 
         # -------------------------------
@@ -226,6 +228,7 @@ async def upload_file(file: UploadFile = File(...)):
         if match_ok2:
             final_lat.append(lat2)
             final_lng.append(lng2)
+            partial_flags.append(False)
             continue
         # -----------------------------------------------
         # 3️⃣ Terceira tentativa (substituir bairro → Novo Horizonte)
@@ -246,15 +249,53 @@ async def upload_file(file: UploadFile = File(...)):
             if match_ok3:
                 final_lat.append(lat3)
                 final_lng.append(lng3)
+                partial_flags.append(False)
                 continue
+
+        # ----------------------------------------------------------------
+        # 4️⃣ QUARTA TENTATIVA: tentar lote+1 e lote-1 (endereço parcial)
+        # ----------------------------------------------------------------
+        # Aplique apenas se normalized contém quadra-lote
+        match_quad_lote = re.search(r",\s*([0-9]+)-([0-9]+)$", normalized)
+
+        if match_quad_lote:
+            quadra_num = int(match_quad_lote.group(1))
+            lote_num = int(match_quad_lote.group(2))
+
+            # tenta primeiro lote +1
+            tentativa1 = f"{normalized.rsplit(',', 1)[0]}, {quadra_num}-{lote_num + 1}"
+            lat4, lng4, cep_here4 = await geocode_with_here(tentativa1)
+
+            match_ok4 = cep_here4 and cep_here4.replace("-", "") == cep_original.replace("-", "")
+
+            if match_ok4:
+                final_lat.append(lat4)
+                final_lng.append(lng4)
+                partial_flags.append(True)   # <--- MARCA COMO PARCIAL
+                continue
+
+            # tenta lote -1
+            tentativa2 = f"{normalized.rsplit(',', 1)[0]}, {quadra_num}-{max(lote_num - 1, 0)}"
+            lat5, lng5, cep_here5 = await geocode_with_here(tentativa2)
+
+            match_ok5 = cep_here5 and cep_here5.replace("-", "") == cep_original.replace("-", "")
+
+            if match_ok5:
+                final_lat.append(lat5)
+                final_lng.append(lng5)
+                partial_flags.append(True)  # <--- MARCA COMO PARCIAL
+                continue
+
         # -------------------------------
         # 3️⃣ Falhou → "Não encontrado"
         # -------------------------------
         final_lat.append("Não encontrado")
         final_lng.append("Não encontrado")
+        partial_flags.append(False)
 
     df["Geo_Latitude"] = final_lat
     df["Geo_Longitude"] = final_lng
+    df["Partial_Match"] = partial_flags
 
     # Sanitização de saída
     records = []
@@ -265,6 +306,7 @@ async def upload_file(file: UploadFile = File(...)):
                 clean[k] = None
             else:
                 clean[k] = v
+        clean["Partial_Match"] = r.get("Partial_Match", False)
         records.append(clean)
 
     return {

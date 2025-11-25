@@ -181,19 +181,28 @@ function addRow(row, columns) {
     const tr = document.createElement("tr");
     tr.className = "odd:bg-white even:bg-slate-50 hover:bg-blue-50";
 
-    columns.forEach(col => {
-        const td = document.createElement("td");
-        const value = row[col] ?? "";
+   columns.forEach(col => {
+    const td = document.createElement("td");
+    const value = row[col] ?? "";
 
-        td.textContent = value;
-        td.className = "border-b border-r px-4 py-2";
+    td.textContent = value;
+    td.className = "border-b border-r px-4 py-2";
 
-        if (value === "Não encontrado") {
-            td.classList.add("text-red-600", "font-bold", "bg-red-50");
-        }
+    // 🔴 Caso 1: Não encontrado → vermelho
+    if (value === "Não encontrado") {
+        td.classList.add("text-red-600", "font-bold", "bg-red-50");
+    }
 
-        tr.appendChild(td);
-    });
+    // 🟡 Caso 2: Endereço encontrado parcialmente → amarelo
+    if (row["Partial_Match"] === true && 
+        (col === "Geo_Latitude" || col === "Geo_Longitude")) {
+
+        td.classList.add("bg-yellow-100", "text-yellow-900");
+        td.title = "Endereço encontrado parcialmente";
+    }
+
+    tr.appendChild(td);
+});
 
     tb.appendChild(tr);
 }
