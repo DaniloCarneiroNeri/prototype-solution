@@ -130,7 +130,7 @@ def normalize_address(raw):
         if quadra and lote:
             return f"{street}, {quadra}-{lote}"
 
-        return "0"
+        return ""
 
     except Exception as e:
         return f"[ERRO-NORMALIZE] {str(e)}"
@@ -207,6 +207,15 @@ async def upload_file(file: UploadFile = File(...)):
         # -------------------------------
         # 1️⃣ Primeira tentativa
         # -------------------------------
+        match_quad_lote = re.search(r",\s*([0-9]+)-([0-9]+)$", normalized)
+        match_quad_quadra = re.search(r"\bQUADRA\b|\bQ([0-9]+)", normalized, re.IGNORECASE)
+
+        if not match_quad_lote and not match_quad_quadra:
+            final_lat.append("Não encontrado")
+            final_lng.append("Não encontrado")
+            partial_flags.append(False)
+            continue
+        
         lat, lng, cep_here = await geocode_with_here(normalized)
 
         match_ok = cep_here and cep_here.replace("-", "") == cep_original.replace("-", "")
