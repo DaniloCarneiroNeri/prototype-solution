@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <title>Upload & Export Excel</title>
+  <title>Route Planner</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
@@ -37,9 +37,13 @@
 
 <body class="bg-gray-100 h-screen w-screen flex flex-col">
 
-  <header class="bg-blue-700 text-white p-4 shadow-md flex justify-between items-center">
-    <h1 class="text-2xl font-bold">Processador de Excel</h1>
-  </header>
+<header class="bg-blue-700 text-white p-4 shadow-md flex items-center gap-3">
+    <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+            d="M9 20l-5.447-2.724A2 2 0 013 15.382V6a2 2 0 012-2h1m5 0h1a2 2 0 012 2v7.382a2 2 0 01-1.553 1.894L9 20zm0 0h6" />
+    </svg>
+    <h1 class="text-2xl font-bold tracking-wide">Route Planner</h1>
+</header>
 
   <main class="flex-1 overflow-auto p-6">
     <div class="w-full bg-white shadow rounded-xl p-6">
@@ -94,9 +98,9 @@
         <div class="border border-gray-300 rounded-lg shadow-sm bg-white">
             <div class="table-container rounded-t-lg">
                 <table class="min-w-full text-sm border-collapse opacity-100" id="dataTable">
-                    <thead id="tableHead" class="shadow-sm"></thead>
+                    <thead id="tableHead"></thead>
                     <tbody id="tableBody"></tbody>
-                    <tfoot id="tableFooter" class="text-gray-700 font-semibold bg-gray-100">
+                    <tfoot class="text-gray-700 font-semibold bg-gray-100">
                         <tr>
                             <td colspan="100%" class="px-4 py-3 text-right">
                                 <div class="flex justify-end gap-6">
@@ -143,287 +147,8 @@
     </div>
   </div>
 
- <script>
-    let globalData = [];
-    let globalFileName = "resultado";
-
-    function setTableLoading(isLoading) {
-        const tbl = document.getElementById("dataTable");
-        if (isLoading) {
-            tbl.classList.add("opacity-50");
-            tbl.style.pointerEvents = "none";
-        } else {
-            tbl.classList.remove("opacity-50");
-            tbl.style.pointerEvents = "auto";
-        }
-    }
-
-    document.getElementById("btnUpload").onclick = () => {
-        const fileInput = document.getElementById("fileInput");
-        const file = fileInput.files[0];
-        const btn = document.getElementById("btnUpload");
-
-        const progressContainer = document.getElementById("progressContainer");
-        const progressBar = document.getElementById("progressBar");
-        const progressPercent = document.getElementById("progressPercent");
-        const progressStatus = document.getElementById("progressStatus");
-
-        if (!file) {
-            alert("Selecione um arquivo Excel primeiro!");
-            return;
-        }
-
-        globalFileName = file.name.split('.')[0] + "_processado";
-
-        const formData = new FormData();
-        formData.append("file", file);
-
-        btn.innerText = "Enviando...";
-        btn.disabled = true;
-        btn.classList.add("opacity-50");
-        document.getElementById("result").classList.add("hidden"); 
-        
-        progressContainer.classList.remove("hidden");
-        progressBar.style.width = "0%";
-        progressPercent.innerText = "0%";
-        progressStatus.innerText = "Carregando arquivo...";
-
-        const xhr = new XMLHttpRequest();
-
-        xhr.upload.onprogress = (event) => {
-            if (event.lengthComputable) {
-                const pct = Math.round((event.loaded / event.total) * 100);
-                progressBar.style.width = pct + "%";
-                progressPercent.innerText = pct + "%";
-                if (pct === 100) {
-                    progressStatus.innerText = "Processando dados...";
-                    progressBar.classList.remove("bg-blue-600");
-                    progressBar.classList.add("bg-green-500", "animate-pulse");
-                }
-            }
-        };
-
-        xhr.onload = () => {
-            resetUI();
-            if (xhr.status >= 200 && xhr.status < 300) {
-                const resp = JSON.parse(xhr.responseText);
-                handleSuccess(resp);
-            } else {
-                alert("Erro ao processar.");
-            }
-        };
-
-        xhr.onerror = () => {
-            resetUI();
-            alert("Erro de conexão.");
-        };
-
-        xhr.open("POST", "/upload", true);
-        xhr.send(formData);
-
-        function resetUI() {
-            btn.innerText = "Enviar";
-            btn.disabled = false;
-            btn.classList.remove("opacity-50");
-            setTimeout(() => {
-                 progressContainer.classList.add("hidden");
-                 progressBar.classList.add("bg-blue-600");
-                 progressBar.classList.remove("bg-green-500", "animate-pulse");
-            }, 500);
-        }
-
-        function handleSuccess(resp) {
-            globalData = resp.data;
-
-            document.getElementById("result").classList.remove("hidden");
-            document.getElementById("jsonOutput").innerText = JSON.stringify(resp, null, 2);
-
-            const data = resp.data;
-            const columns = data.length ? Object.keys(data[0]) : [];
-
-            const total = data.length;
-            let notFound = 0;
-
-            data.forEach(row => {
-                if (Object.values(row).includes("Não encontrado")) notFound++;
-            });
-
-            document.getElementById("statTotalLines").innerText = total;
-            document.getElementById("statNotFound").innerText = notFound;
-
-            renderTable(columns, data);
-        }
-    };
-
-    function renderTable(columns, data) {
-        setTableLoading(true);
-
-        const tableHead = document.getElementById("tableHead");
-        const tableBody = document.getElementById("tableBody");
-
-        tableHead.innerHTML = "";
-        tableBody.innerHTML = "";
-
-        if (columns.length) {
-            const trTitle = document.createElement("tr");
-            const trFilter = document.createElement("tr");
-
-            columns.forEach(col => {
-                const th = document.createElement("th");
-                th.className = "border-b border-r px-4 py-2 text-left font-bold bg-gray-200";
-                th.textContent = col;
-                trTitle.appendChild(th);
-
-                const thF = document.createElement("th");
-                thF.className = "border-b border-r p-1 bg-gray-100";
-
-                const inp = document.createElement("input");
-                inp.type = "text";
-                inp.placeholder = "Filtrar...";
-                inp.className = "w-full text-xs p-1 border rounded";
-                inp.onkeyup = () => filterTable();
-                thF.appendChild(inp);
-
-                trFilter.appendChild(thF);
-            });
-
-            tableHead.appendChild(trTitle);
-            tableHead.appendChild(trFilter);
-        }
-
-        let index = 0;
-
-        function addNext() {
-            if (index >= data.length) {
-                setTableLoading(false);
-                return;
-            }
-            addRow(data[index], columns);
-            index++;
-            requestAnimationFrame(addNext);
-        }
-
-        addNext();
-    }
-
-    function addRow(row, columns) {
-        const tb = document.getElementById("tableBody");
-
-        const tr = document.createElement("tr");
-        tr.className = "odd:bg-white even:bg-slate-50 hover:bg-blue-50";
-
-        columns.forEach(col => {
-            const td = document.createElement("td");
-            const value = row[col] ?? "";
-
-            td.textContent = value;
-            td.className = "border-b border-r px-4 py-2";
-
-            if (value === "Não encontrado") {
-                td.classList.add("text-red-600", "font-bold", "bg-red-50");
-            }
-
-            tr.appendChild(td);
-        });
-
-        tb.appendChild(tr);
-    }
-
-    function exportToExcel() {
-        if (!globalData.length) return alert("Não há dados!");
-
-        const ws = XLSX.utils.json_to_sheet(globalData);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Dados Processados");
-        XLSX.writeFile(wb, `${globalFileName}.xlsx`);
-    }
-
-    function exportToCircuit() {
-        if (!globalData.length) {
-            alert("Nenhum dado carregado!");
-            return;
-        }
-
-        const rows = [];
-
-        globalData.forEach((r, i) => {
-            const normalized = r["Normalized_Address"] || "";
-            let quadra = "";
-            let lote = "";
-
-            const match = normalized.match(/,?\s*([0-9A-Z]+)-([0-9A-Z]+)/);
-            if (match) {
-                quadra = match[1];
-                lote = match[2];
-            }
-
-            const obs = `${i + 1}-Quadra:${quadra} - Lote:${lote}`;
-
-            rows.push({
-                Geo_Latitude: r["Geo_Latitude"],
-                Geo_Longitude: r["Geo_Longitude"],
-                Observacoes: obs
-            });
-        });
-
-        let csv = "Geo_Latitude,Geo_Longitude,Observacoes\n";
-        rows.forEach(r => {
-            csv += `${r.Geo_Latitude},${r.Geo_Longitude},"${r.Observacoes}"\n`;
-        });
-
-        const blob = new Blob([csv], { type: "text/csv" });
-        const url = URL.createObjectURL(blob);
-
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${globalFileName}_CIRCUIT.csv`;
-        a.click();
-
-        URL.revokeObjectURL(url);
-    }
-
-    function openPopup() {
-        document.getElementById("exportPopup").classList.remove("hidden");
-    }
-
-    function closePopup() {
-        document.getElementById("exportPopup").classList.add("hidden");
-    }
-
-    document.getElementById("popupExportExcel").onclick = () => {
-        closePopup();
-        exportToExcel();
-    };
-
-    document.getElementById("popupExportCircuit").onclick = () => {
-        closePopup();
-        exportToCircuit();
-    };
-
-    window.filterTable = function () {
-        const table = document.getElementById("dataTable");
-        const tr = table.querySelector("tbody").getElementsByTagName("tr");
-        const inputs = table.querySelector("thead").getElementsByTagName("input");
-
-        const filters = Array.from(inputs).map(i => i.value.toUpperCase());
-
-        for (let row of tr) {
-            let show = true;
-            let tds = row.getElementsByTagName("td");
-
-            for (let i = 0; i < filters.length; i++) {
-                if (filters[i] && tds[i]) {
-                    const txt = tds[i].textContent.toUpperCase();
-                    if (!txt.includes(filters[i])) {
-                        show = false;
-                        break;
-                    }
-                }
-            }
-            row.style.display = show ? "" : "none";
-        }
-    };
- </script>
+  <!-- SCRIPT EXTERNO -->
+  <script src="script.js"></script>
 
 </body>
 </html>
