@@ -6,6 +6,12 @@ import fs from "fs";
 import multer from "multer";
 import path from "path";
 
+// ======== CONFIGURAÇÃO DO BACKEND ========
+const PYTHON_URL =
+  process.env.PYTHON_URL || "http://localhost:8000/upload";
+
+console.log("🚀 PYTHON_URL ativo:", PYTHON_URL);
+
 const app = express();
 const upload = multer({ dest: "uploads/" });
 
@@ -13,6 +19,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static("public"));
 
+// ======== ROTA DE UPLOAD ========
 app.post("/upload", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
@@ -21,14 +28,15 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 
     const fileBuffer = fs.readFileSync(req.file.path);
 
-    // IMPORTANTÍSSIMO: FormData nativo do Node 18 espera um Blob
+    // Node 18 → usa Blob nativo
     const blob = new Blob([fileBuffer]);
 
-    // FormData nativo do Node 18
+    // Node 18 → FormData nativo
     const form = new FormData();
     form.append("file", blob, req.file.originalname);
 
-    const response = await fetch("http://python-backend:8000/upload", {
+    // ======== ENVIA PARA O BACKEND CORRETO ========
+    const response = await fetch(PYTHON_URL, {
       method: "POST",
       body: form
     });
@@ -53,6 +61,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
   }
 });
 
+// ======== FRONTEND ROOT ========
 app.get("/", (req, res) => {
   res.sendFile(path.join(path.resolve(), "public/index.html"));
 });
