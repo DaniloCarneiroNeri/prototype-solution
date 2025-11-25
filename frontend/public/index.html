@@ -7,7 +7,6 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
   <style>
-    /* Estilo para manter o cabeçalho e o rodapé fixos enquanto o corpo rola */
     .table-container {
       max-height: 60vh;
       overflow-y: auto;
@@ -45,6 +44,7 @@
   <main class="flex-1 overflow-auto p-6">
     <div class="w-full bg-white shadow rounded-xl p-6">
 
+      <!-- UPLOAD -->
       <div class="mb-6">
         <label class="block text-gray-800 mb-2 font-semibold">Selecione um arquivo .xlsx</label>
         <div class="flex gap-4">
@@ -73,23 +73,27 @@
 
       </div>
 
+      <!-- RESULTADO -->
       <div id="result" class="mt-8 hidden">
         
         <div class="flex justify-between items-center mb-4 border-b pb-2">
             <h2 class="text-2xl font-semibold text-gray-800">Resultado da Análise</h2>
             
             <button 
-                id="btnExport" 
-                onclick="exportToExcel()"
+                id="btnExport"
+                onclick="openPopup()"
                 class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded inline-flex items-center transition-colors shadow-sm">
-                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                Baixar Excel (.xlsx)
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                </svg>
+                Exportar
             </button>
         </div>
 
         <div class="border border-gray-300 rounded-lg shadow-sm bg-white">
             <div class="table-container rounded-t-lg">
-                <table class="min-w-full text-sm border-collapse" id="dataTable">
+                <table class="min-w-full text-sm border-collapse opacity-100" id="dataTable">
                     <thead id="tableHead" class="shadow-sm"></thead>
                     <tbody id="tableBody"></tbody>
                     <tfoot id="tableFooter" class="text-gray-700 font-semibold bg-gray-100">
@@ -117,17 +121,48 @@
     </div>
   </main>
 
+  <!-- POPUP EXPORTAÇÃO -->
+  <div id="exportPopup" class="fixed inset-0 bg-black bg-opacity-40 hidden items-center justify-center">
+    <div class="bg-white p-6 rounded-xl shadow-xl w-80">
+      <h2 class="text-xl font-bold mb-4 text-gray-800">Exportar dados</h2>
+
+      <button id="popupExportExcel"
+        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded mb-3">
+        Exportar Excel
+      </button>
+
+      <button id="popupExportCircuit"
+        class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded">
+        Exportar para Circuit
+      </button>
+
+      <button onclick="closePopup()"
+        class="w-full mt-4 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded">
+        Cancelar
+      </button>
+    </div>
+  </div>
+
  <script>
-    // Variável global para armazenar os dados processados para exportação
     let globalData = [];
     let globalFileName = "resultado";
+
+    function setTableLoading(isLoading) {
+        const tbl = document.getElementById("dataTable");
+        if (isLoading) {
+            tbl.classList.add("opacity-50");
+            tbl.style.pointerEvents = "none";
+        } else {
+            tbl.classList.remove("opacity-50");
+            tbl.style.pointerEvents = "auto";
+        }
+    }
 
     document.getElementById("btnUpload").onclick = () => {
         const fileInput = document.getElementById("fileInput");
         const file = fileInput.files[0];
         const btn = document.getElementById("btnUpload");
 
-        // Elementos UI
         const progressContainer = document.getElementById("progressContainer");
         const progressBar = document.getElementById("progressBar");
         const progressPercent = document.getElementById("progressPercent");
@@ -138,13 +173,11 @@
             return;
         }
 
-        // Atualiza nome base do arquivo para exportação
         globalFileName = file.name.split('.')[0] + "_processado";
 
         const formData = new FormData();
         formData.append("file", file);
 
-        // Reset UI
         btn.innerText = "Enviando...";
         btn.disabled = true;
         btn.classList.add("opacity-50");
@@ -157,41 +190,29 @@
 
         const xhr = new XMLHttpRequest();
 
-        // 1. Progresso
         xhr.upload.onprogress = (event) => {
             if (event.lengthComputable) {
-                const percentComplete = Math.round((event.loaded / event.total) * 100);
-                progressBar.style.width = percentComplete + "%";
-                progressPercent.innerText = percentComplete + "%";
-                if (percentComplete === 100) {
-                    progressStatus.innerText = "Processando dados no servidor...";
+                const pct = Math.round((event.loaded / event.total) * 100);
+                progressBar.style.width = pct + "%";
+                progressPercent.innerText = pct + "%";
+                if (pct === 100) {
+                    progressStatus.innerText = "Processando dados...";
                     progressBar.classList.remove("bg-blue-600");
                     progressBar.classList.add("bg-green-500", "animate-pulse");
                 }
             }
         };
 
-        // 2. Load
         xhr.onload = () => {
             resetUI();
             if (xhr.status >= 200 && xhr.status < 300) {
-                try {
-                    const resp = JSON.parse(xhr.responseText);
-                    handleSuccess(resp);
-                } catch (e) {
-                    alert("Erro ao ler resposta: " + e.message);
-                }
+                const resp = JSON.parse(xhr.responseText);
+                handleSuccess(resp);
             } else {
-                try {
-                    const errorResp = JSON.parse(xhr.responseText);
-                    alert("Erro: " + (errorResp.error || "Erro desconhecido"));
-                } catch (e) {
-                    alert("Erro " + xhr.status + " no servidor.");
-                }
+                alert("Erro ao processar.");
             }
         };
 
-        // 3. Error
         xhr.onerror = () => {
             resetUI();
             alert("Erro de conexão.");
@@ -208,136 +229,201 @@
                  progressContainer.classList.add("hidden");
                  progressBar.classList.add("bg-blue-600");
                  progressBar.classList.remove("bg-green-500", "animate-pulse");
-            }, 1000);
+            }, 500);
         }
 
         function handleSuccess(resp) {
-            if (!resp.data || !Array.isArray(resp.data)) {
-                alert("Dados inválidos.");
-                return;
-            }
-
-            // Salva dados na variável global para exportação
             globalData = resp.data;
 
             document.getElementById("result").classList.remove("hidden");
             document.getElementById("jsonOutput").innerText = JSON.stringify(resp, null, 2);
 
             const data = resp.data;
-            const columns = data.length > 0 ? Object.keys(data[0]) : [];
-            
-            // Contagem por LINHA
-            const totalLines = data.length;
-            let notFoundRowsCount = 0;
+            const columns = data.length ? Object.keys(data[0]) : [];
+
+            const total = data.length;
+            let notFound = 0;
 
             data.forEach(row => {
-                const hasErrorInRow = columns.some(col => String(row[col]).trim() === "Não encontrado");
-                if (hasErrorInRow) notFoundRowsCount++;
+                if (Object.values(row).includes("Não encontrado")) notFound++;
             });
 
-            document.getElementById("statTotalLines").innerText = totalLines;
-            document.getElementById("statNotFound").innerText = notFoundRowsCount;
+            document.getElementById("statTotalLines").innerText = total;
+            document.getElementById("statNotFound").innerText = notFound;
 
             renderTable(columns, data);
         }
-
-        function renderTable(columns, data) {
-            const tableHead = document.getElementById("tableHead");
-            const tableBody = document.getElementById("tableBody");
-            
-            tableHead.innerHTML = "";
-            tableBody.innerHTML = "";
-
-            if (columns.length > 0) {
-                const trTitle = document.createElement("tr");
-                const trFilter = document.createElement("tr");
-
-                columns.forEach((col, index) => {
-                    const th = document.createElement("th");
-                    th.className = "border-b border-r px-4 py-2 text-left font-bold text-gray-700 bg-gray-200 whitespace-nowrap";
-                    th.textContent = col;
-                    trTitle.appendChild(th);
-
-                    const thFilter = document.createElement("th");
-                    thFilter.className = "border-b border-r p-1 bg-gray-100";
-                    const input = document.createElement("input");
-                    input.type = "text";
-                    input.placeholder = `Filtrar...`;
-                    input.className = "w-full text-xs p-1 border rounded focus:outline-none focus:border-blue-500 font-normal";
-                    input.onkeyup = () => filterTable();
-                    thFilter.appendChild(input);
-                    trFilter.appendChild(thFilter);
-                });
-                tableHead.appendChild(trTitle);
-                tableHead.appendChild(trFilter);
-            }
-
-            data.forEach(row => { 
-                const tr = document.createElement("tr");
-                tr.className = "odd:bg-white even:bg-slate-50 hover:bg-blue-50 transition-colors";
-
-                columns.forEach(col => {
-                    const td = document.createElement("td");
-                    td.className = "border-b border-r px-4 py-2 whitespace-nowrap";
-                    const cellValue = row[col] !== undefined ? row[col] : '';
-                    td.textContent = cellValue;
-
-                    if (String(cellValue).trim() === "Não encontrado") {
-                        td.classList.add("text-red-600", "font-bold", "bg-red-50");
-                    }
-                    tr.appendChild(td);
-                });
-                tableBody.appendChild(tr);
-            });
-        }
     };
 
-    // ==========================================
-    // FUNÇÃO DE EXPORTAÇÃO (EXCEL)
-    // ==========================================
+    function renderTable(columns, data) {
+        setTableLoading(true);
+
+        const tableHead = document.getElementById("tableHead");
+        const tableBody = document.getElementById("tableBody");
+
+        tableHead.innerHTML = "";
+        tableBody.innerHTML = "";
+
+        if (columns.length) {
+            const trTitle = document.createElement("tr");
+            const trFilter = document.createElement("tr");
+
+            columns.forEach(col => {
+                const th = document.createElement("th");
+                th.className = "border-b border-r px-4 py-2 text-left font-bold bg-gray-200";
+                th.textContent = col;
+                trTitle.appendChild(th);
+
+                const thF = document.createElement("th");
+                thF.className = "border-b border-r p-1 bg-gray-100";
+
+                const inp = document.createElement("input");
+                inp.type = "text";
+                inp.placeholder = "Filtrar...";
+                inp.className = "w-full text-xs p-1 border rounded";
+                inp.onkeyup = () => filterTable();
+                thF.appendChild(inp);
+
+                trFilter.appendChild(thF);
+            });
+
+            tableHead.appendChild(trTitle);
+            tableHead.appendChild(trFilter);
+        }
+
+        let index = 0;
+
+        function addNext() {
+            if (index >= data.length) {
+                setTableLoading(false);
+                return;
+            }
+            addRow(data[index], columns);
+            index++;
+            requestAnimationFrame(addNext);
+        }
+
+        addNext();
+    }
+
+    function addRow(row, columns) {
+        const tb = document.getElementById("tableBody");
+
+        const tr = document.createElement("tr");
+        tr.className = "odd:bg-white even:bg-slate-50 hover:bg-blue-50";
+
+        columns.forEach(col => {
+            const td = document.createElement("td");
+            const value = row[col] ?? "";
+
+            td.textContent = value;
+            td.className = "border-b border-r px-4 py-2";
+
+            if (value === "Não encontrado") {
+                td.classList.add("text-red-600", "font-bold", "bg-red-50");
+            }
+
+            tr.appendChild(td);
+        });
+
+        tb.appendChild(tr);
+    }
+
     function exportToExcel() {
-        if (!globalData || globalData.length === 0) {
-            alert("Não há dados para exportar.");
+        if (!globalData.length) return alert("Não há dados!");
+
+        const ws = XLSX.utils.json_to_sheet(globalData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Dados Processados");
+        XLSX.writeFile(wb, `${globalFileName}.xlsx`);
+    }
+
+    function exportToCircuit() {
+        if (!globalData.length) {
+            alert("Nenhum dado carregado!");
             return;
         }
 
-        // 1. Cria uma Worksheet (planilha) a partir do JSON
-        const worksheet = XLSX.utils.json_to_sheet(globalData);
+        const rows = [];
 
-        // 2. Cria um Workbook (arquivo Excel)
-        const workbook = XLSX.utils.book_new();
+        globalData.forEach((r, i) => {
+            const normalized = r["Normalized_Address"] || "";
+            let quadra = "";
+            let lote = "";
 
-        // 3. Adiciona a planilha ao arquivo
-        XLSX.utils.book_append_sheet(workbook, worksheet, "Dados Processados");
+            const match = normalized.match(/,?\s*([0-9A-Z]+)-([0-9A-Z]+)/);
+            if (match) {
+                quadra = match[1];
+                lote = match[2];
+            }
 
-        // 4. Gera e baixa o arquivo
-        XLSX.writeFile(workbook, `${globalFileName}.xlsx`);
+            const obs = `${i + 1}-Quadra:${quadra} - Lote:${lote}`;
+
+            rows.push({
+                Geo_Latitude: r["Geo_Latitude"],
+                Geo_Longitude: r["Geo_Longitude"],
+                Observacoes: obs
+            });
+        });
+
+        let csv = "Geo_Latitude,Geo_Longitude,Observacoes\n";
+        rows.forEach(r => {
+            csv += `${r.Geo_Latitude},${r.Geo_Longitude},"${r.Observacoes}"\n`;
+        });
+
+        const blob = new Blob([csv], { type: "text/csv" });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${globalFileName}_CIRCUIT.csv`;
+        a.click();
+
+        URL.revokeObjectURL(url);
     }
 
-    // Função de Filtro Dinâmico
-    window.filterTable = function() {
-        const table = document.getElementById("dataTable");
-        const tr = table.getElementsByTagName("tbody")[0].getElementsByTagName("tr");
-        const inputs = table.getElementsByTagName("thead")[0].getElementsByTagName("input");
-        
-        const filters = [];
-        for (let i = 0; i < inputs.length; i++) filters.push(inputs[i].value.toUpperCase());
+    function openPopup() {
+        document.getElementById("exportPopup").classList.remove("hidden");
+    }
 
-        for (let i = 0; i < tr.length; i++) {
-            let showRow = true;
-            const tds = tr[i].getElementsByTagName("td");
-            for (let j = 0; j < filters.length; j++) {
-                if (filters[j] && tds[j]) {
-                    const txtValue = tds[j].textContent || tds[j].innerText;
-                    if (txtValue.toUpperCase().indexOf(filters[j]) === -1) {
-                        showRow = false; break;
+    function closePopup() {
+        document.getElementById("exportPopup").classList.add("hidden");
+    }
+
+    document.getElementById("popupExportExcel").onclick = () => {
+        closePopup();
+        exportToExcel();
+    };
+
+    document.getElementById("popupExportCircuit").onclick = () => {
+        closePopup();
+        exportToCircuit();
+    };
+
+    window.filterTable = function () {
+        const table = document.getElementById("dataTable");
+        const tr = table.querySelector("tbody").getElementsByTagName("tr");
+        const inputs = table.querySelector("thead").getElementsByTagName("input");
+
+        const filters = Array.from(inputs).map(i => i.value.toUpperCase());
+
+        for (let row of tr) {
+            let show = true;
+            let tds = row.getElementsByTagName("td");
+
+            for (let i = 0; i < filters.length; i++) {
+                if (filters[i] && tds[i]) {
+                    const txt = tds[i].textContent.toUpperCase();
+                    if (!txt.includes(filters[i])) {
+                        show = false;
+                        break;
                     }
                 }
             }
-            tr[i].style.display = showRow ? "" : "none";
+            row.style.display = show ? "" : "none";
         }
-    }
-</script>
+    };
+ </script>
 
 </body>
 </html>
