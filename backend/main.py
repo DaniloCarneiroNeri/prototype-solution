@@ -274,7 +274,31 @@ async def upload_file(file: UploadFile = File(...)):
                 partial_flags.append(True)   # <--- MARCA COMO PARCIAL
                 continue
 
+            # tenta primeiro lote +1 de novo
+            tentativa1 = f"{normalized.rsplit(',', 1)[0]}, {quadra_num}-{lote_num + 1}"
+            lat4, lng4, cep_here4 = await geocode_with_here(tentativa1)
+
+            match_ok4 = cep_here4 and cep_here4.replace("-", "") == cep_original.replace("-", "")
+
+            if match_ok4:
+                final_lat.append(lat4)
+                final_lng.append(lng4)
+                partial_flags.append(True)   # <--- MARCA COMO PARCIAL
+                continue
+        
             # tenta lote -1
+            tentativa2 = f"{normalized.rsplit(',', 1)[0]}, {quadra_num}-{max(lote_num - 1, 0)}"
+            lat5, lng5, cep_here5 = await geocode_with_here(tentativa2)
+
+            match_ok5 = cep_here5 and cep_here5.replace("-", "") == cep_original.replace("-", "")
+
+            if match_ok5:
+                final_lat.append(lat5)
+                final_lng.append(lng5)
+                partial_flags.append(True)  # <--- MARCA COMO PARCIAL
+                continue
+
+            # tenta lote -1 denovo
             tentativa2 = f"{normalized.rsplit(',', 1)[0]}, {quadra_num}-{max(lote_num - 1, 0)}"
             lat5, lng5, cep_here5 = await geocode_with_here(tentativa2)
 
