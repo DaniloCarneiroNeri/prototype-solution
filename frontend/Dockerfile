@@ -1,23 +1,26 @@
-# --- Build Stage ---
-FROM node:18 AS build
+# frontend/Dockerfile
+# (path: frontend/Dockerfile)
+FROM node:18-alpine
+
+# Use a non-root user (safer)
+RUN addgroup -S app && adduser -S -G app app
+
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-RUN npm install
+# Copia apenas deps primeiro para cache eficaz
+COPY package.json package-lock.json* ./
 
+# Instala apenas prod dependencies
+RUN npm ci --only=production
+
+# Copia o resto do código
 COPY . .
-RUN npm run build   # <-- gera /build
 
-# --- Final Image (Nginx) ---
-FROM nginx:stable-alpine
-WORKDIR /usr/share/nginx/html
-
-# Apaga conteúdo padrão
-RUN rm -rf ./*
-
-# Copia arquivos gerados pelo build
-COPY --from=build /app/build .
+# Ajusta permissões e usuário
+RUN chown -R app:app /app
+USER app
 
 EXPOSE 3000
 
-CMD ["nginx", "-g", "daemon off;"]
+# Start do seu servidor Node (server.js)
+CMD ["node", "server.js"]
