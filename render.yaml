@@ -1,0 +1,20 @@
+services:
+  - type: docker
+    name: node-frontend
+    env: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./frontend/Dockerfile
+    buildCommand: ""
+    startCommand: ""
+    autoDeploy: true
+
+  - type: docker
+    name: python-backend
+    env: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./backend/Dockerfile
+    buildCommand: ""
+    startCommand: ""
+    autoDeploy: true
