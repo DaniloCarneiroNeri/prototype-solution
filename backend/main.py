@@ -83,7 +83,7 @@ def normalize_address(raw):
             )
 
             text_upper = text.upper()
-            
+
         # -------------------------------------------------------------------------
         # 1.2 Regras adicionais: BL e RC
         # -------------------------------------------------------------------------
@@ -149,53 +149,74 @@ def normalize_address(raw):
             )
 
             text_upper = text.upper()
+
         # -------------------------------------------------------------------------
-        # 2. Regex tolerantes p/ QUADRA e LOTE
-        # Inclui versões com ":"  → Quadra:07 | Lote:07
+        # 2. NOVAS REGRAS para QUADRA e LOTE (super tolerantes)
+        #
+        # QUADRA aceita:
+        #   Q, QD, QDR, QDRA, QUADRA...
+        #   Q B7      → quadra = 7
+        #   QD B 03   → quadra = 3
+        #   Quadra B11 → quadra = 11
+        #   Qd B2 → quadra = 2
+        #
+        # LOTE aceita:
+        #   L, LT, LTE, LOTE...
+        #   LT 14 → lote = 14
+        #   Lote 9 → lote = 9
+        #   LT B02 → lote = 2 (letra ignorada)
         # -------------------------------------------------------------------------
 
-        # QUADRA — inclui: q, qd, qdra, quadra, quad, quad:, q:, qd:, quadra:
-        q_full = re.search(
-            r"\bQ(?:U?A?D?R?A?)?[:\.\s]*([0-9]+[A-Z]?)\b",
+        # QUADRA — aceita letras antes do número, mas remove letra
+        q_match = re.search(
+            r"\bQ(?:U?A?D?R?A?)?[:\.\s]*([A-Z]?)(\d{1,3})\b",
             text_upper
         )
 
-        # Q28L1
-        q_comp = re.search(r"\bQ([0-9]+)[^\d]?L([0-9]+)\b", text_upper)
-
-        # LOTE — inclui: l, lt, lote, lote:, l:
-        l_full = re.search(
-            r"\bL(?:O?T?E?)?[:\.\s]*([0-9]+[A-Z]?)\b",
+        # LOTE — aceita letras antes do número, mas remove letra
+        l_match = re.search(
+            r"\bL(?:O?T?E?)?[:\.\s]*([A-Z]?)(\d{1,3})\b",
             text_upper
         )
 
         quadra = None
         lote = None
 
-        if q_full:
-            quadra = q_full.group(1).lstrip("0") or "0"
 
-        if q_comp:
-            quadra = quadra or (q_comp.group(1).lstrip("0") or "0")
-            lote = lote or (q_comp.group(2).lstrip("0") or "0")
+        # -------------------------
+        # QUADRA
+        # -------------------------
+        if q_match:
+            # grupo 1 → letra opcional (descartada)
+            # grupo 2 → número real da quadra
+            quadra_num = q_match.group(2).lstrip("0") or "0"
+            quadra = quadra_num
 
-        if l_full:
-            lote = lote or (l_full.group(1).lstrip("0") or "0")
+
+        # -------------------------
+        # LOTE
+        # -------------------------
+        if l_match:
+            lote_num = l_match.group(2).lstrip("0") or "0"
+            lote = lote_num
+
 
         # -------------------------------------------------------------------------
-        # 3. Fallback "15-20"
+        # 3. Fallback para padrão “15-20”
         # -------------------------------------------------------------------------
         if not (quadra and lote):
-            fb = re.search(r"\b([0-9]+)\s*-\s*([0-9]+)\b", text)
+            fb = re.search(r"\b([0-9]+)\s*-\s*([0-9]+)\b", text_upper)
             if fb:
-                quadra = quadra or fb.group(1).lstrip("0")
-                lote = lote or fb.group(2).lstrip("0")
+                quadra = quadra or fb.group(1).lstrip("0") or "0"
+                lote = lote or fb.group(2).lstrip("0") or "0"
+
 
         # -------------------------------------------------------------------------
         # 4. Definição da rua (com proteção anti None)
         # -------------------------------------------------------------------------
         cut_index = len(text)
 
+        # Marcadores que indicam o fim do nome da rua
         separators = [",", " - ", " Nº", " NUMERO", " CASA", " APT", " APTO"]
 
         for sep in separators:
@@ -203,10 +224,10 @@ def normalize_address(raw):
             if idx != -1 and idx < cut_index:
                 cut_index = idx
 
+        # Posições onde começam as informações de quadra/lote
         regex_positions = [
-            q_full.start() if q_full else None,
-            l_full.start() if l_full else None,
-            q_comp.start() if q_comp else None,
+            q_match.start() if q_match else None,
+            l_match.start() if l_match else None
         ]
 
         for pos in regex_positions:
@@ -219,8 +240,10 @@ def normalize_address(raw):
         # 5. Sanitização
         # -------------------------------------------------------------------------
         invalid = {"0", "00", "SN", "S/N", "NULL"}
+
         if quadra and quadra.upper() in invalid:
             quadra = None
+
         if lote and lote.upper() in invalid:
             lote = None
 
