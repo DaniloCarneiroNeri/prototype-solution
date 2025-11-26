@@ -205,17 +205,14 @@ function addRowFixed(row, visibleCols) {
     const tr = document.createElement("tr");
     tr.className = "odd:bg-white even:bg-slate-50 hover:bg-blue-50";
 
-    // 🚀 Criamos uma nova coluna virtual: "Geo_Lat_Lng"
     const unifiedValue = `${row["Geo_Latitude"] ?? ""}  ${row["Geo_Longitude"] ?? ""}`;
 
     visibleCols.forEach(col => {
         const td = document.createElement("td");
 
-        // ⚠️ Intercepta as duas colunas originais e substitui por 1 coluna
         if (col === "Geo_Latitude" || col === "Geo_Longitude") {
-            if (col !== "Geo_Latitude") return; // mostra apenas uma vez
-
-            col = "Geo_Lat_Lng"; // renomeia internamente
+            if (col !== "Geo_Latitude") return;
+            col = "Geo_Lat_Lng";
         }
 
         let value =
@@ -225,18 +222,19 @@ function addRowFixed(row, visibleCols) {
 
         td.className = "border-b border-r px-4 py-2";
 
-        const isNotFound = value.includes("Não encontrado");
+        const strValue = String(value);
+
+        const isNotFound = strValue.includes("Não encontrado");
         const isPartial =
             row["Partial_Match"] === true &&
-            (col === "Geo_Lat_Lng");
+            col === "Geo_Lat_Lng";
 
-        // 🔥 CELULA EDITÁVEL
         if (isNotFound || isPartial) {
             td.classList.add("p-0");
 
             const input = document.createElement("input");
             input.type = "text";
-            input.value = value;
+            input.value = strValue;
 
             input.className = `
                 w-full h-full px-2 py-1 outline-none
@@ -248,20 +246,17 @@ function addRowFixed(row, visibleCols) {
                 input.title = "Endereço encontrado parcialmente - VERIFIQUE";
             }
 
-            // Atualizar o row ao editar
+            // Atualiza row ao digitar
             input.addEventListener("input", () => {
                 const parts = input.value.split(/\s+/);
 
-                // latitude = primeiro valor
                 row["Geo_Latitude"] = parts[0] ?? "";
-
-                // longitude = último valor
                 row["Geo_Longitude"] = parts[parts.length - 1] ?? "";
             });
 
             td.appendChild(input);
         } else {
-            td.textContent = value;
+            td.textContent = strValue;
         }
 
         tr.appendChild(td);
@@ -269,6 +264,7 @@ function addRowFixed(row, visibleCols) {
 
     tb.appendChild(tr);
 }
+
 
 
 
