@@ -381,6 +381,42 @@ async def upload_file(file: UploadFile = File(...)):
 
         cond_flags.append(False)
 
+        # -------------------------------
+        # Primeira tentativa
+        # -------------------------------
+        match_quad_lote = re.search(r",\s*([0-9]+)-([0-9]+)$", normalized)
+        match_quad_quadra = re.search(r"\bQUADRA\b|\bQ([0-9]+)", normalized, re.IGNORECASE)
+
+        if not match_quad_lote and not match_quad_quadra:
+            final_lat.append("Não encontrado")
+            final_lng.append("Não encontrado")
+            partial_flags.append(False)
+            continue
+        
+        lat, lng, cep_here = await geocode_with_here(normalized)
+
+        match_ok = cep_here and cep_here.replace("-", "") == cep_original.replace("-", "")
+
+        if match_ok:
+            final_lat.append(lat)
+            final_lng.append(lng)
+            partial_flags.append(False)
+            continue
+
+        # -------------------------------
+        # tentativa (com Bairro)
+        # -------------------------------
+        second_query = f"{normalized}, {bairro}"
+        lat2, lng2, cep_here2 = await geocode_with_here(second_query)
+
+        match_ok2 = cep_here2 and cep_here2.replace("-", "") == cep_original.replace("-", "")
+
+        if match_ok2:
+            final_lat.append(lat2)
+            final_lng.append(lng2)
+            partial_flags.append(False)
+            continue
+
         # ---------------------------------------------------------
         # 2.5 TENTATIVA — Rua iniciando com número (ex.: "Rua 9 de Julho")
         # ---------------------------------------------------------
@@ -444,47 +480,13 @@ async def upload_file(file: UploadFile = File(...)):
 
             match_ok3 = cep_here3 and cep_here3.replace("-", "") == cep_original.replace("-", "")
 
+            df["Normalized_Address"] = tentativa_extenso
+
             if match_ok3:
                 final_lat.append(lat3)
                 final_lng.append(lng3)
                 partial_flags.append(False)
                 continue
-
-        # -------------------------------
-        # Primeira tentativa
-        # -------------------------------
-        match_quad_lote = re.search(r",\s*([0-9]+)-([0-9]+)$", normalized)
-        match_quad_quadra = re.search(r"\bQUADRA\b|\bQ([0-9]+)", normalized, re.IGNORECASE)
-
-        if not match_quad_lote and not match_quad_quadra:
-            final_lat.append("Não encontrado")
-            final_lng.append("Não encontrado")
-            partial_flags.append(False)
-            continue
-        
-        lat, lng, cep_here = await geocode_with_here(normalized)
-
-        match_ok = cep_here and cep_here.replace("-", "") == cep_original.replace("-", "")
-
-        if match_ok:
-            final_lat.append(lat)
-            final_lng.append(lng)
-            partial_flags.append(False)
-            continue
-
-        # -------------------------------
-        # tentativa (com Bairro)
-        # -------------------------------
-        second_query = f"{normalized}, {bairro}"
-        lat2, lng2, cep_here2 = await geocode_with_here(second_query)
-
-        match_ok2 = cep_here2 and cep_here2.replace("-", "") == cep_original.replace("-", "")
-
-        if match_ok2:
-            final_lat.append(lat2)
-            final_lng.append(lng2)
-            partial_flags.append(False)
-            continue
 
         # -------------------------------
         # Trativa com cidade (com Bairro) (sem cep)
