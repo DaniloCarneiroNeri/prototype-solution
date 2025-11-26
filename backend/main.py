@@ -347,7 +347,7 @@ async def upload_file(file: UploadFile = File(...)):
     cond_flags = []
 
     for idx, row in df.iterrows():
-        normalized = str(row.get("Normalized_Address", "")).upper()
+        normalized = row.get("Normalized_Address", "")
         cep_original = str(row["Zipcode/Postal code"]).strip()
         bairro_raw = row.get("Bairro", "")
         bairro = "" if pd.isna(bairro_raw) else str(bairro_raw).strip()
@@ -356,7 +356,7 @@ async def upload_file(file: UploadFile = File(...)):
         # -------------------------------
         # Validação condominio
         # -------------------------------
-        cond_keywords = ["COND", "CONDOMINIO", "CONDOMÍNIO"]
+        cond_keywords = ["Condominio"]
 
         if any(k in normalized for k in cond_keywords):
             cond_flags.append(True)
