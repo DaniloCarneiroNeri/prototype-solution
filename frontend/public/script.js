@@ -205,11 +205,13 @@ function addRowFixed(row, visibleCols) {
     const tr = document.createElement("tr");
     tr.className = "odd:bg-white even:bg-slate-50 hover:bg-blue-50";
 
-    const unifiedValue = `${row["Geo_Latitude"] ?? ""}  ${row["Geo_Longitude"] ?? ""}`;
+    const unifiedValue =
+        `${row["Geo_Latitude"] ?? ""}  ${row["Geo_Longitude"] ?? ""}`;
 
     visibleCols.forEach(col => {
         const td = document.createElement("td");
 
+        // Unifica colunas
         if (col === "Geo_Latitude" || col === "Geo_Longitude") {
             if (col !== "Geo_Latitude") return;
             col = "Geo_Lat_Lng";
@@ -248,10 +250,21 @@ function addRowFixed(row, visibleCols) {
 
             // Atualiza row ao digitar
             input.addEventListener("input", () => {
-                const parts = input.value.split(/\s+/);
+                const clean = input.value.trim();
+                const parts = clean.split(/\s+/);
 
-                row["Geo_Latitude"] = parts[0] ?? "";
-                row["Geo_Longitude"] = parts[parts.length - 1] ?? "";
+                if (parts.length >= 2) {
+                    // OK — usuário informou os 2 valores
+                    row["Geo_Latitude"] = parts[0];
+                    row["Geo_Longitude"] = parts[1];
+                } else if (parts.length === 1) {
+                    // Só latitude digitada — NÃO apaga longitude
+                    row["Geo_Latitude"] = parts[0];
+                }
+
+                // Reformatar visualmente enquanto digita
+                input.value =
+                    `${row["Geo_Latitude"] ?? ""}  ${row["Geo_Longitude"] ?? ""}`;
             });
 
             td.appendChild(input);
@@ -264,9 +277,6 @@ function addRowFixed(row, visibleCols) {
 
     tb.appendChild(tr);
 }
-
-
-
 
 // =========================
 // Exportação Excel

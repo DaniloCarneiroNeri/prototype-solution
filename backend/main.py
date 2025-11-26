@@ -85,6 +85,71 @@ def normalize_address(raw):
             text_upper = text.upper()
             
         # -------------------------------------------------------------------------
+        # 1.2 Regras adicionais: BL e RC
+        # -------------------------------------------------------------------------
+
+        text_upper = text.upper()
+
+        # ============================================================
+        # TRATAMENTO PARA "BL"
+        # Exemplos:
+        # Rua BL11  -> Rua BL-011
+        # R BL9     -> Rua BL-009
+        # Rua BL7   -> Rua BL-007
+        # ============================================================
+
+        rua_bl = re.search(
+            r"\bRUA\s+BL\s*[- ]?\s*(\d{1,3})\b",
+            text_upper
+        )
+
+        # Também captura variação "R BL9"
+        rua_bl_alt = re.search(
+            r"\bR\s+BL\s*[- ]?\s*(\d{1,3})\b",
+            text_upper
+        )
+
+        if rua_bl or rua_bl_alt:
+            numero = (rua_bl.group(1) if rua_bl else rua_bl_alt.group(1)).zfill(3)
+
+            novo_padrao = f"RUA BL-{numero}"
+
+            text = re.sub(
+                r"\b(?:RUA|R)\s+BL\s*[- ]?\s*\d{1,3}\b",
+                novo_padrao,
+                text,
+                flags=re.IGNORECASE
+            )
+
+            text_upper = text.upper()
+
+        # ============================================================
+        # TRATAMENTO PARA "RC"
+        # Formato final: RUA RC-<numero>
+        # Exemplos:
+        # Rua RC51  -> Rua RC-51
+        # RUA RC27 -> Rua RC-27
+        # RUA RC 5 -> Rua RC-5
+        # ============================================================
+
+        rua_rc = re.search(
+            r"\b(?:RUA|R)\s+RC\s*[- ]?\s*(\d{1,3})\b",
+            text_upper
+        )
+
+        if rua_rc:
+            numero = rua_rc.group(1).lstrip("0") or "0"   # mantém o número original
+            novo_padrao = f"RUA RC-{numero}"
+
+            text = re.sub(
+                r"\b(?:RUA|R)\s+RC\s*[- ]?\s*\d{1,3}\b",
+                novo_padrao,
+                text,
+                flags=re.IGNORECASE
+            )
+
+            text_upper = text.upper()
+        # -------------------------------------------------------------------------
         # 2. Regex tolerantes p/ QUADRA e LOTE
         # Inclui versões com ":"  → Quadra:07 | Lote:07
         # -------------------------------------------------------------------------
