@@ -71,7 +71,7 @@ def normalize_address(raw, bairro):
             "RESIDENCIAL MIAMI",
             "EDIFÍCIO",
             "EDIFICIO",
-            "VILA SANTA RITA - 5ª ETAPA"
+            "SALA"
         ]):
             is_condominio = True
         else:
@@ -94,7 +94,7 @@ def normalize_address(raw, bairro):
         # -------------------------------------------------------------------------
 
         # Converte "R " para "RUA " para uniformizar (mantido)
-        text = re.sub(r"\bR\s+", "RUA ", text, flags=re.IGNORECASE)
+        text = re.sub(r"(^|\s)R\s+(?=[A-Z])", r"\1RUA ", text, flags=re.IGNORECASE)
         text_upper = text.upper()
 
         # Captura "RUA AC3", "RUA AC 3", "RUA RI 15", etc. (mantido, mas robusto)
@@ -137,20 +137,15 @@ def normalize_address(raw, bairro):
             text_upper = text.upper()
 
         # RC — tornar captura robusta: captura mesmo se seguido por letra/pontuação
-        # Não altera a lógica: mantém lstrip("0") behavior
-        # Busca com grupos para substituir somente o dígito capturado
         rc_search = re.search(r"(\b(?:RUA|R)\s+RC\s*[- ]?\s*)(\d{1,3})", text_upper, flags=0)
         if rc_search:
             rc_num = rc_search.group(2).lstrip("0") or "0"
-            # substitui apenas a parte numérica, preservando o prefixo original
             def _rc_sub(m):
                 prefix = m.group(1)
                 return f"{prefix}{rc_num}"
-            # Substitui no texto original (case-insensitive)
+
             text = re.sub(r"(\b(?:RUA|R)\s+RC\s*[- ]?\s*)(\d{1,3})", lambda m: _rc_sub(m), text, flags=re.IGNORECASE)
-            # Agora uniformiza para "RUA RC-<numero>" (sem zero padding, conforme original behavior)
-            # Vamos localizar novamente o padrão e trocar para "RUA RC-{num}"
-            # Observação: preservamos o número já lstrip-ed acima.
+
             text = re.sub(
                 r"(\b(?:RUA|R)\s+RC\s*[- ]?\s*)(\d{1,3})",
                 lambda m: f"RUA RC-{rc_num}",
@@ -194,14 +189,35 @@ def normalize_address(raw, bairro):
 
         # QUADRA: aceitar Q, QD, Qd., QDR, QUADRA, Q23, Qd7, Quadra 8lote 8 (pontos e sem espaço)
         q_match = re.search(
-            r"\bQ(?:D|DRA|DRA|UADRA|U?A?D?R?A?)\.?\s*[:.,\- ]?\s*([A-Z]?\d{1,3}[A-Z]?)",
-            text_upper
+            r"""
+            \b
+            Q
+            (?:        
+                U?A?D?R?A?       
+                |UA             
+                |S               
+                |UANDRA          
+            )?
+            \.?
+            \s*[:,.\- ]?\s*
+            ([A-Z]?\d{1,3}[A-Z]?)
+            """,
+            text_upper,
+            flags=re.VERBOSE
         )
 
         # LOTE: aceitar L, LT, LOTE, Lt01, lote8, L01, com/sem ponto
         l_match = re.search(
-            r"\bL(?:T|OTE|TE)?\.?\s*[:.,\- ]?\s*([A-Z]?\d{1,3}[A-Z]?)",
-            text_upper
+            r"""
+            \b
+            L
+            (?:T|TE|OTE)?   # LT, LTE, LOTE
+            \.?
+            \s*[:,.\- ]?\s*
+            ([A-Z]?\d{1,3}[A-Z]?)
+            """,
+            text_upper,
+            flags=re.VERBOSE
         )
 
         # -------------------------
