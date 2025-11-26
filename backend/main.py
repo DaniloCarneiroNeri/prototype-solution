@@ -30,9 +30,9 @@ def normalize_address(raw, bairro):
     """
     Normaliza endereços ao padrão:
     'RUA/AVENIDA, QUADRA-LOTE'
-    Com tratamento seguro (sem exceções).
+    Mantém a lógica original; melhora robustez dos regex para capturar
+    RC / QUADRA / LOTE em formatos grudados, com pontuação e variações.
     """
-
     try:
         if pd.isna(raw) or str(raw).strip() == "":
             return ""
@@ -41,9 +41,7 @@ def normalize_address(raw, bairro):
         bairro = "" if pd.isna(bairro) else str(bairro).strip()
 
         # -------------------------------
-        # 1. Regra especial CONDOMÍNIO
-        # Se Destination Address OU Bairro contiver
-        # cond, condominio, condomínio, etc.
+        # 1. Regra especial CONDOMÍNIO (mantida)
         # -------------------------------
         raw_combined = f"{text} {bairro}".upper()
 
@@ -55,7 +53,6 @@ def normalize_address(raw, bairro):
 
         if any(bad in raw_combined for bad in ignore_cond):
             is_condominio = False
-
         elif any(word in raw_combined for word in [
             "COND",
             "COND.",
@@ -77,16 +74,16 @@ def normalize_address(raw, bairro):
             "VILA SANTA RITA - 5ª ETAPA"
         ]):
             is_condominio = True
-
         else:
             is_condominio = False
 
+        # limpeza básica
         text = re.sub(r'\s+', ' ', text)
         text = text.replace('/', ' ')
         text_upper = text.upper()
 
         # -------------------------------------------------------------------------
-        # 1. Regra especial: Rua Fxx -> Rua F-xx
+        # 1. Regra especial: Rua Fxx -> Rua F-xx  (mantida)
         # -------------------------------------------------------------------------
         if re.search(r"\bRUA\s+F(\d+)\b", text_upper):
             text = re.sub(r"\b(RUA\s+F)(\d+)\b", r"\1-\2", text, flags=re.IGNORECASE)
@@ -94,120 +91,87 @@ def normalize_address(raw, bairro):
 
         # -------------------------------------------------------------------------
         # 1.1 Regras adicionais de normalização de ruas
-        # Exemplos:
-        # Rua AC3  -> Rua AC-003
-        # Rua W 11 -> Rua W-011
-        # R W 4    -> RUA W-004
-        # R RI 3   -> RUA RI-003
         # -------------------------------------------------------------------------
-        
-        # Converte "R " para "RUA " para uniformizar
+
+        # Converte "R " para "RUA " para uniformizar (mantido)
         text = re.sub(r"\bR\s+", "RUA ", text, flags=re.IGNORECASE)
         text_upper = text.upper()
 
-        # Captura "RUA AC3", "RUA AC 3", "RUA RI 15", etc.
+        # Captura "RUA AC3", "RUA AC 3", "RUA RI 15", etc. (mantido, mas robusto)
         rua_codigo = re.search(
             r"\bRUA\s+([A-Z]{1,3})\s*[- ]?\s*(\d{1,3})\b",
             text_upper
         )
 
         if rua_codigo:
-            codigo = rua_codigo.group(1).upper()             # AC / W / RI
-            numero = rua_codigo.group(2).zfill(3)            # zero-pad → 3 dígitos
-
+            codigo = rua_codigo.group(1).upper()
+            numero = rua_codigo.group(2).zfill(3)  # zero-pad → 3 dígitos
             novo_padrao = f"RUA {codigo}-{numero}"
 
-            # substitui somente a parte capturada
             text = re.sub(
                 r"\bRUA\s+[A-Z]{1,3}\s*[- ]?\s*\d{1,3}\b",
                 novo_padrao,
                 text,
                 flags=re.IGNORECASE
             )
-
             text_upper = text.upper()
 
         # -------------------------------------------------------------------------
         # 1.2 Regras adicionais: BL e RC
         # -------------------------------------------------------------------------
-
         text_upper = text.upper()
 
-        # ============================================================
-        # TRATAMENTO PARA "BL"
-        # Exemplos:
-        # Rua BL11  -> Rua BL-011
-        # R BL9     -> Rua BL-009
-        # Rua BL7   -> Rua BL-007
-        # ============================================================
-
-        rua_bl = re.search(
-            r"\bRUA\s+BL\s*[- ]?\s*(\d{1,3})\b",
-            text_upper
-        )
-
-        # Também captura variação "R BL9"
-        rua_bl_alt = re.search(
-            r"\bR\s+BL\s*[- ]?\s*(\d{1,3})\b",
-            text_upper
-        )
+        # BL (mantido)
+        rua_bl = re.search(r"\bRUA\s+BL\s*[- ]?\s*(\d{1,3})\b", text_upper)
+        rua_bl_alt = re.search(r"\bR\s+BL\s*[- ]?\s*(\d{1,3})\b", text_upper)
 
         if rua_bl or rua_bl_alt:
             numero = (rua_bl.group(1) if rua_bl else rua_bl_alt.group(1)).zfill(3)
-
             novo_padrao = f"RUA BL-{numero}"
-
             text = re.sub(
                 r"\b(?:RUA|R)\s+BL\s*[- ]?\s*\d{1,3}\b",
                 novo_padrao,
                 text,
                 flags=re.IGNORECASE
             )
-
             text_upper = text.upper()
 
-        # ============================================================
-        # TRATAMENTO PARA "RC"
-        # Formato final: RUA RC-<numero>
-        # Exemplos:
-        # Rua RC51  -> Rua RC-51
-        # RUA RC27 -> Rua RC-27
-        # RUA RC 5 -> Rua RC-5
-        # ============================================================
-
-        rua_rc = re.search(
-            r"\b(?:RUA|R)\s+RC\s*[- ]?\s*(\d{1,3})(?=[^\w]|$)",
-            text_upper
-        )
-
-        if rua_rc:
-            numero = rua_rc.group(1).lstrip("0") or "0"
-            novo_padrao = f"RUA RC-{numero}"
-
+        # RC — tornar captura robusta: captura mesmo se seguido por letra/pontuação
+        # Não altera a lógica: mantém lstrip("0") behavior
+        # Busca com grupos para substituir somente o dígito capturado
+        rc_search = re.search(r"(\b(?:RUA|R)\s+RC\s*[- ]?\s*)(\d{1,3})", text_upper, flags=0)
+        if rc_search:
+            rc_num = rc_search.group(2).lstrip("0") or "0"
+            # substitui apenas a parte numérica, preservando o prefixo original
+            def _rc_sub(m):
+                prefix = m.group(1)
+                return f"{prefix}{rc_num}"
+            # Substitui no texto original (case-insensitive)
+            text = re.sub(r"(\b(?:RUA|R)\s+RC\s*[- ]?\s*)(\d{1,3})", lambda m: _rc_sub(m), text, flags=re.IGNORECASE)
+            # Agora uniformiza para "RUA RC-<numero>" (sem zero padding, conforme original behavior)
+            # Vamos localizar novamente o padrão e trocar para "RUA RC-{num}"
+            # Observação: preservamos o número já lstrip-ed acima.
             text = re.sub(
-                r"\b(?:RUA|R)\s+RC\s*[- ]?\s*\d{1,3}(?=[^\w]|$)",
-                novo_padrao,
+                r"(\b(?:RUA|R)\s+RC\s*[- ]?\s*)(\d{1,3})",
+                lambda m: f"RUA RC-{rc_num}",
                 text,
                 flags=re.IGNORECASE
             )
-
             text_upper = text.upper()
-        # -------------------------------
-        # Regra nova: converter "Rua <numero>" para extenso
+
+        # ------------------------------- (mantido)
+        # Regra nova: converter "Rua <numero>" para extenso (mantido)
         # -------------------------------
         m_rua_num = re.match(r"^RUA\s+(\d+)\b", text_upper)
         if m_rua_num:
             num_rua = int(m_rua_num.group(1))
-
             def extenso(n):
                 unidades = ["","um","dois","três","quatro","cinco","seis","sete","oito","nove"]
                 especiais = {"10":"dez","11":"onze","12":"doze","13":"treze","14":"quatorze","15":"quinze",
                             "16":"dezesseis","17":"dezessete","18":"dezoito","19":"dezenove"}
                 dezenas = ["","","vinte","trinta","quarenta","cinquenta","sessenta","setenta","oitenta","noventa"]
-
                 n = str(n)
                 v = int(n)
-
                 if v < 10:
                     return unidades[v]
                 if n in especiais:
@@ -223,35 +187,20 @@ def normalize_address(raw, bairro):
             text_upper = text.upper()
 
         # -------------------------------------
-        # ------------------------------------
-        # 2. NOVAS REGRAS para QUADRA e LOTE (super tolerantes)
-        #
-        # QUADRA aceita:
-        #   Q, QD, QDR, QDRA, QUADRA...
-        #   Q B7      → quadra = 7
-        #   QD B 03   → quadra = 3
-        #   Quadra B11 → quadra = 11
-        #   Qd B2 → quadra = 2
-        #
-        # LOTE aceita:
-        #   L, LT, LTE, LOTE...
-        #   LT 14 → lote = 14
-        #   Lote 9 → lote = 9
-        #   LT B02 → lote = 2 (letra ignorada)
-        # -------------------------------------------------------------------------
-
+        # 2. NOVAS REGRAS para QUADRA e LOTE (robustas)
+        # -------------------------------------
         quadra = None
         lote   = None
 
-        # QUADRA
+        # QUADRA: aceitar Q, QD, Qd., QDR, QUADRA, Q23, Qd7, Quadra 8lote 8 (pontos e sem espaço)
         q_match = re.search(
-            r"\bQ(?:U?A?D?R?A?)?\s*[:,.\- ]?\s*([A-Z]?\d{1,3}[A-Z]?)(?=\s*L(?:O?T?E?)?\b|\s*LT\b|\s*LOTE\b)",
+            r"\bQ(?:D|DRA|DRA|UADRA|U?A?D?R?A?)\.?\s*[:.,\- ]?\s*([A-Z]?\d{1,3}[A-Z]?)",
             text_upper
         )
 
-        # LOTE
+        # LOTE: aceitar L, LT, LOTE, Lt01, lote8, L01, com/sem ponto
         l_match = re.search(
-            r"\bL(?:O?T?E?)?\s*[:,.\- ]?\s*([A-Z]?\d{1,3}[A-Z]?)",
+            r"\bL(?:T|OTE|TE)?\.?\s*[:.,\- ]?\s*([A-Z]?\d{1,3}[A-Z]?)",
             text_upper
         )
 
@@ -259,7 +208,7 @@ def normalize_address(raw, bairro):
         # EXTRAÇÃO DA QUADRA
         # -------------------------
         if q_match:
-            raw = q_match.group(1)
+            raw = q_match.group(1) or ""
             digits = re.sub(r"[^0-9]", "", raw)
             if digits:
                 quadra = digits.lstrip("0") or "0"
@@ -274,7 +223,7 @@ def normalize_address(raw, bairro):
                 lote = digits.lstrip("0") or "0"
 
         # -------------------------------------------------------------------------
-        # 3. Fallback para padrão "15-20"
+        # 3. Fallback para padrão "15-20" (mantido)
         # -------------------------------------------------------------------------
         if not (quadra and lote):
             fb = re.search(r"\b([0-9]+)\s*-\s*([0-9]+)\b", text_upper)
@@ -295,10 +244,10 @@ def normalize_address(raw, bairro):
             if idx != -1 and idx < cut_index:
                 cut_index = idx
 
-        # Posições onde começam as informações de quadra/lote
+        # Posições onde começam as informações de quadra/lote (se detectados)
         regex_positions = [
-            q_match.start() if q_match else None,
-            l_match.start() if l_match else None
+            (q_match.start() if q_match else None),
+            (l_match.start() if l_match else None)
         ]
 
         for pos in regex_positions:
@@ -308,14 +257,14 @@ def normalize_address(raw, bairro):
         street = text[:cut_index].strip().rstrip(" ,-./")
 
         # -------------------------------------------------------------------------
-        # 5. Sanitização
+        # 5. Sanitização (mantida)
         # -------------------------------------------------------------------------
         invalid = {"0", "00", "SN", "S/N", "NULL"}
 
-        if quadra and quadra.upper() in invalid:
+        if quadra and str(quadra).upper() in invalid:
             quadra = None
 
-        if lote and lote.upper() in invalid:
+        if lote and str(lote).upper() in invalid:
             lote = None
 
         # ============================================================
