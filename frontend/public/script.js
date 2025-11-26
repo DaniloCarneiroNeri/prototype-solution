@@ -128,6 +128,9 @@ document.getElementById("btnUpload").onclick = () => {
     let partial = data.filter(r => r["Partial_Match"] === true).length;
     document.getElementById("statPartial").innerText = partial;
 
+    let cond = data.filter(r => r["Partial_Cond"] === true).length;
+    document.getElementById("statCond").innerText = cond;
+
     renderTable(columns, data);
 }
 };
@@ -144,7 +147,7 @@ function renderTable(columns, data) {
     tableHead.innerHTML = "";
     tableBody.innerHTML = "";
 
-    const hiddenCols = ["Partial_Match", "Unnamed: 0","Geo_Longitude"];
+    const hiddenCols = ["Partial_Match", "Unnamed: 0","Geo_Longitude","Stop","Latitude","Longitude","Partial_Cond"];
 
     const visibleCols = columns.filter(c => !hiddenCols.includes(c));
 
@@ -227,11 +230,10 @@ function addRowFixed(row, visibleCols) {
         const strValue = String(value);
 
         const isNotFound = strValue.includes("Não encontrado");
-        const isPartial =
-            row["Partial_Match"] === true &&
-            col === "Geo_Lat_Lng";
+        const isPartial = row["Partial_Match"] === true && col === "Geo_Lat_Lng";
+        const isCond = row["Partial_Cond"] === true 
 
-        if (isNotFound || isPartial) {
+        if (isNotFound || isPartial || isCond) {
             td.classList.add("p-0");
 
             const input = document.createElement("input");
@@ -241,7 +243,8 @@ function addRowFixed(row, visibleCols) {
             input.className = `
                 w-full h-full px-2 py-1 outline-none
                 ${isNotFound ? "text-red-600 font-bold bg-red-50" : ""}
-                ${isPartial ? "bg-yellow-100 text-yellow-900" : ""}
+                ${isPartial ? "bg-yellow-100 font-bold text-yellow-900" : ""}
+                ${isCond ? "bg-purple-100 font-bold text-purple-900" : ""}
             `.trim();
 
             if (isPartial) {

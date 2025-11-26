@@ -26,7 +26,7 @@ HERE_API_KEY = os.getenv("HERE_API_KEY")
 # ============================================================
 # NORMALIZAÇÃO DO ENDEREÇO
 # ============================================================
-def normalize_address(raw):
+def normalize_address(raw, bairro):
     """
     Normaliza endereços ao padrão:
     'RUA/AVENIDA, QUADRA-LOTE'
@@ -38,6 +38,20 @@ def normalize_address(raw):
             return ""
 
         text = str(raw).strip()
+        bairro = "" if pd.isna(bairro) else str(bairro).strip()
+
+        # -------------------------------
+        # 1. Regra especial CONDOMÍNIO
+        # Se Destination Address OU Bairro contiver
+        # cond, condominio, condomínio, etc.
+        # -------------------------------
+        raw_combined = f"{text} {bairro}".upper()
+
+        if any(word in raw_combined for word in ["COND", "CONDOMINIO", "CONDOMÍNIO"]):
+            is_condominio = True
+        else:
+            is_condominio = False
+
         text = re.sub(r'\s+', ' ', text)
         text = text.replace('/', ' ')
         text_upper = text.upper()
@@ -167,28 +181,29 @@ def normalize_address(raw):
         #   LT B02 → lote = 2 (letra ignorada)
         # -------------------------------------------------------------------------
 
+        quadra = None
+        lote   = None
+
         # QUADRA
         q_match = re.search(
-            r"\bQ(?:U?A?D?R?A?)?[:\.\s]*([A-Z]?\s*\d{1,3})\b",
+            r"\bQ(?:U?A?D?R?A?)?[:\.\s]*([A-Z]?\s*\d{1,3}\s*[A-Z]?)\b",
             text_upper
         )
 
         # LOTE
         l_match = re.search(
-            r"\bL(?:O?T?E?)?[:\.\s]*([A-Z]?\s*\d{1,3})\b",
+            r"\bL(?:O?T?E?)?[:\.\s]*([A-Z]?\s*\d{1,3}\s*[A-Z]?)\b",
             text_upper
         )
-
-        quadra = None
-        lote = None
 
         # -------------------------
         # EXTRAÇÃO DA QUADRA
         # -------------------------
         if q_match:
-            raw = q_match.group(1) or ""        # SEM group(2)
-            digits = re.sub(r"[^0-9]", "", raw)  # remove letra e espaços
-            if digits.isdigit():
+            raw = q_match.group(1) or ""
+            # remove tudo que não é número (letras antes/depois são descartadas)
+            digits = re.sub(r"[^0-9]", "", raw)
+            if digits:
                 quadra = digits.lstrip("0") or "0"
 
         # -------------------------
@@ -197,11 +212,11 @@ def normalize_address(raw):
         if l_match:
             raw = l_match.group(1) or ""
             digits = re.sub(r"[^0-9]", "", raw)
-            if digits.isdigit():
+            if digits:
                 lote = digits.lstrip("0") or "0"
 
         # -------------------------------------------------------------------------
-        # 3. Fallback para padrão “15-20”
+        # 3. Fallback para padrão "15-20"
         # -------------------------------------------------------------------------
         if not (quadra and lote):
             fb = re.search(r"\b([0-9]+)\s*-\s*([0-9]+)\b", text_upper)
@@ -245,9 +260,20 @@ def normalize_address(raw):
         if lote and lote.upper() in invalid:
             lote = None
 
-        # -------------------------------------------------------------------------
-        # 6. Resultado final SEM EXCEÇÕES
-        # -------------------------------------------------------------------------
+        # ============================================================
+        # 7. REGRA FINAL — Se é condomínio, força o nome da rua
+        # ============================================================
+        if is_condominio:
+            if quadra and lote:
+                return f"Condominio, {quadra}-{lote}"
+            elif quadra:
+                return f"Condominio, {quadra}"
+            else:
+                return "Condominio"
+
+        # ============================================================
+        # 8. Retorno normal (rua padrão)
+        # ============================================================
         if quadra and lote:
             return f"{street}, {quadra}-{lote}"
 
@@ -312,12 +338,13 @@ async def upload_file(file: UploadFile = File(...)):
         raise HTTPException(422, "Colunas obrigatórias ausentes")
 
     df["Normalized_Address"] = df.apply(
-    lambda r: normalize_address(r["Destination Address"]),
+    lambda r: normalize_address(r["Destination Address"], r["Bairro"]),
     axis=1)
 
     final_lat = []
     final_lng = []
     partial_flags = [] 
+    cond_flags = []
 
     for idx, row in df.iterrows():
         normalized = row["Normalized_Address"]
@@ -327,7 +354,18 @@ async def upload_file(file: UploadFile = File(...)):
         bairro_upper = bairro.upper()
 
         # -------------------------------
-        # 1️⃣ Primeira tentativa
+        # Validação condominio
+        # -------------------------------
+        cond_keywords = ["COND", "CONDOMINIO", "CONDOMÍNIO"]
+
+        if any(k in normalized for k in cond_keywords):
+            cond_flags.append(True)
+            continue
+        else:
+            cond_flags.append(False)
+
+        # -------------------------------
+        # Primeira tentativa
         # -------------------------------
         match_quad_lote = re.search(r",\s*([0-9]+)-([0-9]+)$", normalized)
         match_quad_quadra = re.search(r"\bQUADRA\b|\bQ([0-9]+)", normalized, re.IGNORECASE)
@@ -349,7 +387,7 @@ async def upload_file(file: UploadFile = File(...)):
             continue
 
         # -------------------------------
-        # 2️⃣ Segunda tentativa (com Bairro)
+        # Segunda tentativa (com Bairro)
         # -------------------------------
         second_query = f"{normalized}, {bairro}"
         lat2, lng2, cep_here2 = await geocode_with_here(second_query)
@@ -362,7 +400,7 @@ async def upload_file(file: UploadFile = File(...)):
             partial_flags.append(False)
             continue
         # -------------------------------
-        # 2️⃣ Trativa com cidade (com Bairro) (sem cep)
+        # Trativa com cidade (com Bairro) (sem cep)
         # -------------------------------
         cidade = "Goiania, Goiânia - GO"
         second_query = f"{normalized}, {bairro}, {cidade}"
@@ -374,8 +412,8 @@ async def upload_file(file: UploadFile = File(...)):
             partial_flags.append(True)
             continue
         # -----------------------------------------------
-        # 3️⃣ Terceira tentativa (substituir bairro → Novo Horizonte)
-        #    Somente nos bairros autorizados
+        # Terceira tentativa (substituir bairro → Novo Horizonte)
+        # Somente nos bairros autorizados
         # -----------------------------------------------
         BAIRROS_RETRY = {
             "SETOR FAIÇALVILLE",
@@ -396,7 +434,7 @@ async def upload_file(file: UploadFile = File(...)):
                 continue
 
             # ----------------------------------------------
-            # 4️⃣ Tentativa parcial — lote ± 1 / ± 2
+            # Tentativa parcial — lote ± 1 / ± 2
             # ----------------------------------------------
             match_quad_lote = re.search(r",\s*([0-9]+)-([0-9]+)$", normalized)
 
@@ -430,7 +468,7 @@ async def upload_file(file: UploadFile = File(...)):
                     continue
 
         # -------------------------------
-        # 3️⃣ Falhou → "Não encontrado"
+        # Falhou → "Não encontrado"
         # -------------------------------
         final_lat.append("Não encontrado")
         final_lng.append("Não encontrado")
@@ -439,6 +477,7 @@ async def upload_file(file: UploadFile = File(...)):
     df["Geo_Latitude"] = final_lat
     df["Geo_Longitude"] = final_lng
     df["Partial_Match"] = pd.Series(partial_flags, index=df.index, dtype=bool)
+    df["Cond_Match"] = pd.Series(cond_flags, index=df.index, dtype=bool)
 
     # Sanitização de saída
     records = []
@@ -450,6 +489,7 @@ async def upload_file(file: UploadFile = File(...)):
             else:
                 clean[k] = v
         clean["Partial_Match"] = r.get("Partial_Match", False)
+        clean["Cond_Match"] = r.get("Cond_Match", False)
         records.append(clean)
 
     return {
