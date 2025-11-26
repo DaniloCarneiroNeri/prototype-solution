@@ -49,7 +49,8 @@ def normalize_address(raw, bairro):
 
         ignore_cond = [
             "CONDOMINIO DAS ESMERALDAS",
-            "CONDOMÍNIO DAS ESMERALDAS"
+            "CONDOMÍNIO DAS ESMERALDAS",
+            "CASA"
         ]
 
         if any(bad in raw_combined for bad in ignore_cond):
@@ -57,14 +58,19 @@ def normalize_address(raw, bairro):
 
         elif any(word in raw_combined for word in [
             "COND",
+            "COND.",
             "CONDOMINIO",
             "CONDOMÍNIO",
             "JARDINS LISBOA",
             "BLOCO",
-            "AP",
+            "APT",
+            "APTO",
+            "PRÉDIO",
+            "PREDIO",
             "RESIDENCIAL MIAMI",
             "EDIFÍCIO",
-            "EDIFICIO"
+            "EDIFICIO",
+            "VILA SANTA RITA - 5ª ETAPA"
         ]):
             is_condominio = True
 
@@ -166,7 +172,7 @@ def normalize_address(raw, bairro):
         # ============================================================
 
         rua_rc = re.search(
-            r"\b(?:RUA|R)\s+RC\s*[- ]?\s*(\d{1,3})\b",
+            r"\b(?:RUA|R)\s+RC\s*[- ]?\s*(\d{1,3})(?=[\s,.\-]|$)",
             text_upper
         )
 
@@ -175,7 +181,7 @@ def normalize_address(raw, bairro):
             novo_padrao = f"RUA RC-{numero}"
 
             text = re.sub(
-                r"\b(?:RUA|R)\s+RC\s*[- ]?\s*\d{1,3}\b",
+                r"\b(?:RUA|R)\s+RC\s*[- ]?\s*\d{1,3}(?=[\s,.\-]|$)",
                 novo_padrao,
                 text,
                 flags=re.IGNORECASE
@@ -235,7 +241,7 @@ def normalize_address(raw, bairro):
 
         # QUADRA
         q_match = re.search(
-            r"\bQ(?:U?A?D?R?A?)?\s*[:,.\-]?\s*([A-Z]?\d{1,3}[A-Z]?)(?=\s*L(?:O?T?E?)?)",
+            r"\bQ(?:U?A?D?R?A?)?\s*[:,.\-]?\s*([A-Z]?\d{1,3}[A-Z]?)(?=\s*L(?:O?T?E?)?\b)",
             text_upper
         )
 
@@ -244,12 +250,12 @@ def normalize_address(raw, bairro):
             r"\bL(?:O?T?E?)?\s*[:,.\-]?\s*([A-Z]?\d{1,3}[A-Z]?)",
             text_upper
         )
+
         # -------------------------
         # EXTRAÇÃO DA QUADRA
         # -------------------------
         if q_match:
             raw = q_match.group(1) or ""
-            # remove tudo que não é número (letras antes/depois são descartadas)
             digits = re.sub(r"[^0-9]", "", raw)
             if digits:
                 quadra = digits.lstrip("0") or "0"
