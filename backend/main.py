@@ -48,7 +48,8 @@ def normalize_address(raw, bairro):
         ignore_cond = [
             "CONDOMINIO DAS ESMERALDAS",
             "CONDOMÍNIO DAS ESMERALDAS",
-            "CASA"
+            "CASA",
+            "SALA"
         ]
 
         if any(bad in raw_combined for bad in ignore_cond):
@@ -70,8 +71,7 @@ def normalize_address(raw, bairro):
             "PREDIO",
             "RESIDENCIAL MIAMI",
             "EDIFÍCIO",
-            "EDIFICIO",
-            "SALA"
+            "EDIFICIO"
         ]):
             is_condominio = True
         else:
