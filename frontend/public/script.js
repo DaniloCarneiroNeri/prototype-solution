@@ -237,7 +237,7 @@ function addRowFixed(row, visibleCols) {
 
             const input = document.createElement("input");
             input.type = "text";
-            input.value = strValue;
+            input.value = isCond ? "Condomínio" : strValue;
 
             input.className = `
                 w-full h-full px-2 py-1 outline-none

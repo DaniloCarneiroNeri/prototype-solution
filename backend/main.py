@@ -347,7 +347,7 @@ async def upload_file(file: UploadFile = File(...)):
     cond_flags = []
 
     for idx, row in df.iterrows():
-        normalized = row["Normalized_Address"]
+        normalized = str(row.get("Normalized_Address", "")).upper()
         cep_original = str(row["Zipcode/Postal code"]).strip()
         bairro_raw = row.get("Bairro", "")
         bairro = "" if pd.isna(bairro_raw) else str(bairro_raw).strip()
