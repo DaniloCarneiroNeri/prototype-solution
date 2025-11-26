@@ -177,8 +177,38 @@ def normalize_address(raw, bairro):
             )
 
             text_upper = text.upper()
+        # -------------------------------
+        # Regra nova: converter "Rua <numero>" para extenso
+        # -------------------------------
+        m_rua_num = re.match(r"^RUA\s+(\d+)\b", text_upper)
+        if m_rua_num:
+            num_rua = int(m_rua_num.group(1))
 
-        # -------------------------------------------------------------------------
+            def extenso(n):
+                unidades = ["","um","dois","três","quatro","cinco","seis","sete","oito","nove"]
+                especiais = {"10":"dez","11":"onze","12":"doze","13":"treze","14":"quatorze","15":"quinze",
+                            "16":"dezesseis","17":"dezessete","18":"dezoito","19":"dezenove"}
+                dezenas = ["","","vinte","trinta","quarenta","cinquenta","sessenta","setenta","oitenta","noventa"]
+
+                n = str(n)
+                v = int(n)
+
+                if v < 10:
+                    return unidades[v]
+                if n in especiais:
+                    return especiais[n]
+                if v % 10 == 0:
+                    return dezenas[v//10]
+                d = v//10
+                u = v%10
+                return f"{dezenas[d]} e {unidades[u]}"
+
+            texto_extenso = extenso(num_rua).capitalize()
+            text = re.sub(r"^RUA\s+\d+", f"Rua {texto_extenso}", text, flags=re.IGNORECASE)
+            text_upper = text.upper()
+
+        # -------------------------------------
+        # ------------------------------------
         # 2. NOVAS REGRAS para QUADRA e LOTE (super tolerantes)
         #
         # QUADRA aceita:
@@ -416,80 +446,7 @@ async def upload_file(file: UploadFile = File(...)):
             final_lng.append(lng2)
             partial_flags.append(False)
             continue
-
-        # ---------------------------------------------------------
-        # 2.5 TENTATIVA — Rua iniciando com número (ex.: "Rua 9 de Julho")
-        # ---------------------------------------------------------
-
-        # Captura rua antes da vírgula
-        rua_crua_original = str(row.get("Destination Address", "")).strip()
-
-        rua_crua_upper = re.sub(r'\s+', ' ', rua_crua_original).upper()
         
-        # Regex: Rua <numero>,
-        padrao_rua_numero = re.match(r'^\s*(?:RUA|R\.?)\s*(?:N(?:º|O)?\s*)?(\d{1,3})\s*,', rua_crua_upper, flags=re.IGNORECASE)
-
-        if padrao_rua_numero:
-            numero = padrao_rua_numero.group(1)
-
-            def numero_por_extenso(n):
-                n = int(n)
-
-                unidades = [
-                    "", "um", "dois", "três", "quatro", "cinco",
-                    "seis", "sete", "oito", "nove"
-                ]
-
-                especiais = {
-                    10: "dez", 11: "onze", 12: "doze", 13: "treze",
-                    14: "quatorze", 15: "quinze", 16: "dezesseis",
-                    17: "dezessete", 18: "dezoito", 19: "dezenove"
-                }
-
-                dezenas = [
-                    "", "", "vinte", "trinta", "quarenta", "cinquenta",
-                    "sessenta", "setenta", "oitenta", "noventa"
-                ]
-
-                # 1 a 9
-                if 1 <= n < 10:
-                    return unidades[n]
-
-                # 10 a 19
-                if 10 <= n < 20:
-                    return especiais[n]
-
-                # 20, 30, 40 ...
-                if n % 10 == 0:
-                    return dezenas[n // 10]
-
-                # 21, 22, 23 ... 31, 32 ... 99
-                d = n // 10      # parte da dezena
-                u = n % 10       # parte da unidade
-                return f"{dezenas[d]} e {unidades[u]}"
-
-
-            numero_extenso = numero_por_extenso(int(numero)).capitalize()
-
-            rua_convertida = f"Rua {numero_extenso}"
-
-            # Montamos nova query preservando quadra e lote
-            if "," in normalized:
-                resto = normalized.split(",", 1)[1].strip()
-                tentativa_extenso = f"{rua_convertida}, {resto}"
-            else:
-                tentativa_extenso = rua_convertida
-
-            # Faz a tentativa
-            lat3, lng3, cep_here3 = await geocode_with_here(tentativa_extenso)
-            match_ok3 = cep_here3 and cep_here3.replace("-", "") == cep_original.replace("-", "")
-
-            if match_ok3:
-                final_lat.append(lat3)
-                final_lng.append(lng3)
-                partial_flags.append(False)
-                continue
-
         # -------------------------------
         # Trativa com cidade (com Bairro) (sem cep)
         # -------------------------------
