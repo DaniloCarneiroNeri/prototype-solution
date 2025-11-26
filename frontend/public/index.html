@@ -133,9 +133,55 @@
     </div>
 </div>
 
-<footer class="bg-gray-200 text-gray-700 text-center py-4 mt-8 border-t">
+<!-- POPUP SOBRE O SOFTWARE -->
+<div id="infoPopup" class="fixed inset-0 bg-black bg-opacity-40 hidden items-center justify-center">
+    <div class="bg-white p-7 rounded-xl shadow-2xl w-96 relative border border-gray-300">
+
+        <!-- Botão fechar -->
+        <button onclick="closeInfoPopup()" 
+                class="absolute top-3 right-3 text-gray-500 hover:text-gray-700 text-xl font-bold">
+            ×
+        </button>
+
+        <!-- LOGO -->
+        <div class="flex flex-col items-center mb-4">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-14 h-14 text-blue-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M9 20l-5.447-2.724A2 2 0 013 15.382V6a2 2 0 012-2h1m5 0h1a2 2 0 012 2v7.382a2 2 0 01-1.553 1.894L9 20zm0 0h6" />
+            </svg>
+
+            <h2 class="text-2xl font-bold text-gray-800 mt-2 tracking-wide">Route Planner</h2>
+        </div>
+
+        <!-- INFO -->
+        <div class="text-gray-700 text-sm space-y-2">
+            <p><span class="font-semibold">Descrição:</span><br>
+               Software profissional para otimização e planejamento inteligente de rotas de entrega.
+            </p>
+
+            <p><span class="font-semibold">Desenvolvedor:</span><br>
+               Danilo Carneiro Neri
+            </p>
+
+            <p><span class="font-semibold">Contato:</span><br>
+               (62) 99625-0706
+            </p>
+
+            <p><span class="font-semibold">Email:</span><br>
+               danilo.carneironeri@gmail.com
+            </p>
+        </div>
+
+        <button onclick="closeInfoPopup()" 
+                class="w-full mt-6 bg-blue-700 hover:bg-blue-800 text-white font-semibold py-2 rounded-lg">
+            Fechar
+        </button>
+    </div>
+</div>
+
+<footer onclick="openInfoPopup()" class="bg-gray-200 text-gray-700 text-center py-4 mt-8 border-t cursor-pointer hover:bg-gray-300 transition">
     <p class="text-sm tracking-wide">
-        Developed by <span class="font-semibold">Danilo Carneiro</span>
+        Desenvolvido por <span class="font-semibold">Danilo Carneiro</span> — <span class="underline">Sobre o software</span>
     </p>
 </footer>
 

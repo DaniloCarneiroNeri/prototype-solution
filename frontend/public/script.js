@@ -393,6 +393,16 @@ document.getElementById("popupExportCircuit").onclick = () => {
     exportToCircuit();
 };
 
+function openInfoPopup() {
+    document.getElementById("infoPopup").classList.remove("hidden");
+    document.getElementById("infoPopup").classList.add("flex");
+}
+
+function closeInfoPopup() {
+    document.getElementById("infoPopup").classList.add("hidden");
+    document.getElementById("infoPopup").classList.remove("flex");
+}
+
 // =========================
 // Filtro Dinâmico
 // =========================
