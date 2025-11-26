@@ -205,22 +205,39 @@ function addRowFixed(row, visibleCols) {
     const tr = document.createElement("tr");
     tr.className = "odd:bg-white even:bg-slate-50 hover:bg-blue-50";
 
+    // 🚀 Criamos uma nova coluna virtual: "Geo_Lat_Lng"
+    const unifiedValue = `${row["Geo_Latitude"] ?? ""}  ${row["Geo_Longitude"] ?? ""}`;
+
     visibleCols.forEach(col => {
         const td = document.createElement("td");
-        const value = row[col] ?? "";
+
+        // ⚠️ Intercepta as duas colunas originais e substitui por 1 coluna
+        if (col === "Geo_Latitude" || col === "Geo_Longitude") {
+            if (col !== "Geo_Latitude") return; // mostra apenas uma vez
+
+            col = "Geo_Lat_Lng"; // renomeia internamente
+        }
+
+        let value =
+            col === "Geo_Lat_Lng"
+                ? unifiedValue
+                : (row[col] ?? "");
+
         td.className = "border-b border-r px-4 py-2";
 
-        const isNotFound = value === "Não encontrado";
-        const isPartial = row["Partial_Match"] === true &&
-                          (col === "Geo_Latitude" || col === "Geo_Longitude");
+        const isNotFound = value.includes("Não encontrado");
+        const isPartial =
+            row["Partial_Match"] === true &&
+            (col === "Geo_Lat_Lng");
 
-        // 🔥  Agora estas células vão virar <input> editável
+        // 🔥 CELULA EDITÁVEL
         if (isNotFound || isPartial) {
-            td.classList.add("p-0"); // remove padding para o input encaixar
+            td.classList.add("p-0");
 
             const input = document.createElement("input");
             input.type = "text";
             input.value = value;
+
             input.className = `
                 w-full h-full px-2 py-1 outline-none
                 ${isNotFound ? "text-red-600 font-bold bg-red-50" : ""}
@@ -231,14 +248,19 @@ function addRowFixed(row, visibleCols) {
                 input.title = "Endereço encontrado parcialmente - VERIFIQUE";
             }
 
-            // atualizar o objeto original ao editar
+            // Atualizar o row ao editar
             input.addEventListener("input", () => {
-                row[col] = input.value;
+                const parts = input.value.split(/\s+/);
+
+                // latitude = primeiro valor
+                row["Geo_Latitude"] = parts[0] ?? "";
+
+                // longitude = último valor
+                row["Geo_Longitude"] = parts[parts.length - 1] ?? "";
             });
 
             td.appendChild(input);
         } else {
-            // células normais
             td.textContent = value;
         }
 
@@ -247,6 +269,7 @@ function addRowFixed(row, visibleCols) {
 
     tb.appendChild(tr);
 }
+
 
 
 // =========================
@@ -282,24 +305,30 @@ function exportToCircuit() {
         let quadra = "";
         let lote = "";
 
-        const match = normalized.match(/,?\s*([0-9A-Z]+)-([0-9A-Z]+)/);
+        // ⚠️ Regex CORRIGIDO → só aceita números
+        const match = normalized.match(/,\s*([0-9]+)-([0-9]+)/);
         if (match) {
             quadra = match[1];
             lote = match[2];
         }
 
-        const obs = `${i + 1} - Quadra:${quadra} - Lote:${lote}`;
+        const seq = i + 1;
         const key = `${lat}|${lng}`;
 
         if (grouped.has(key)) {
-            // 🔥 Junta sequências da mesma coordenada
             const existing = grouped.get(key);
-            existing.Observacoes.push(obs);
+
+            // 🔥 Adiciona sequência
+            existing.Sequencias.push(seq);
+
+            // quadra/lote devem ser iguais — mantém o primeiro
         } else {
             grouped.set(key, {
                 Geo_Latitude: lat,
                 Geo_Longitude: lng,
-                Observacoes: [obs]
+                Quadra: quadra,
+                Lote: lote,
+                Sequencias: [seq]
             });
         }
     });
@@ -314,8 +343,13 @@ function exportToCircuit() {
     let csv = "Geo_Latitude,Geo_Longitude,Observacoes\n";
 
     rows.forEach(r => {
-        const mergedObservacoes = r.Observacoes.join(" | "); 
-        csv += `${r.Geo_Latitude},${r.Geo_Longitude},"${mergedObservacoes}"\n`;
+        // Junta sequências: 28, 29, 30
+        const seqStr = r.Sequencias.join(", ");
+
+        const obs =
+            `${seqStr} - Quadra:${r.Quadra} - Lote:${r.Lote}`;
+
+        csv += `${r.Geo_Latitude},${r.Geo_Longitude},"${obs}"\n`;
     });
 
     const blob = new Blob([csv], { type: "text/csv" });
@@ -328,6 +362,7 @@ function exportToCircuit() {
 
     URL.revokeObjectURL(url);
 }
+
 
 
 

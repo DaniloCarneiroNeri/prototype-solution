@@ -50,6 +50,41 @@ def normalize_address(raw):
             text_upper = text.upper()
 
         # -------------------------------------------------------------------------
+        # 1.1 Regras adicionais de normalização de ruas
+        # Exemplos:
+        # Rua AC3  -> Rua AC-003
+        # Rua W 11 -> Rua W-011
+        # R W 4    -> RUA W-004
+        # R RI 3   -> RUA RI-003
+        # -------------------------------------------------------------------------
+        
+        # Converte "R " para "RUA " para uniformizar
+        text = re.sub(r"\bR\s+", "RUA ", text, flags=re.IGNORECASE)
+        text_upper = text.upper()
+
+        # Captura "RUA AC3", "RUA AC 3", "RUA RI 15", etc.
+        rua_codigo = re.search(
+            r"\bRUA\s+([A-Z]{1,3})\s*[- ]?\s*(\d{1,3})\b",
+            text_upper
+        )
+
+        if rua_codigo:
+            codigo = rua_codigo.group(1).upper()             # AC / W / RI
+            numero = rua_codigo.group(2).zfill(3)            # zero-pad → 3 dígitos
+
+            novo_padrao = f"RUA {codigo}-{numero}"
+
+            # substitui somente a parte capturada
+            text = re.sub(
+                r"\bRUA\s+[A-Z]{1,3}\s*[- ]?\s*\d{1,3}\b",
+                novo_padrao,
+                text,
+                flags=re.IGNORECASE
+            )
+
+            text_upper = text.upper()
+            
+        # -------------------------------------------------------------------------
         # 2. Regex tolerantes p/ QUADRA e LOTE
         # Inclui versões com ":"  → Quadra:07 | Lote:07
         # -------------------------------------------------------------------------
