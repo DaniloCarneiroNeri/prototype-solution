@@ -235,13 +235,13 @@ def normalize_address(raw, bairro):
 
         # QUADRA
         q_match = re.search(
-            r"\bQ(?:U?A?D?R?A?)?[:\.\s]*([A-Z]?\s*\d{1,3}\s*[A-Z]?)\b",
+            r"\bQ(?:U?A?D?R?A?)?\s*[:,\.\-]?\s*([A-Z]?\d{1,3}[A-Z]?)",
             text_upper
         )
 
         # LOTE
         l_match = re.search(
-            r"\bL(?:O?T?E?)?[:\.\s]*([A-Z]?\s*\d{1,3}\s*[A-Z]?)\b",
+            r"\bL(?:O?T?E?)?\s*[:,\.\-]?\s*([A-Z]?\d{1,3}[A-Z]?)",
             text_upper
         )
 

@@ -265,8 +265,10 @@ function addRowFixed(row, visibleCols) {
             input.type = "text";
             const finalValue = (isCond && col === "Geo_Lat_Lng") ? "Condomínio" : strValue;
             input.value = finalValue;
-            globalData[row][col] = finalValue;
-
+            
+            if (col === "Geo_Latitude" || col === "Geo_Longitude") {
+                globalData[row][col] = finalValue;
+            }
             input.className = `
                 w-full h-full px-2 py-1 outline-none
                 ${isNotFound ? "text-red-600 font-bold bg-red-50" : ""}
