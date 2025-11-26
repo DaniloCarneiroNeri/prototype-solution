@@ -228,7 +228,7 @@ function addRowFixed(row, visibleCols) {
 
         const isNotFound = strValue.includes("Não encontrado");
         const isPartial = row["Partial_Match"] === true && col === "Geo_Lat_Lng";
-        const isCond = row["Cond_Match"] === true 
+        const isCond = row["Cond_Match"] === true && col === "Geo_Lat_Lng";
 
         if (isNotFound || isPartial || isCond) {
             td.classList.add("p-0");
