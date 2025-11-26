@@ -136,12 +136,12 @@ document.getElementById("btnUpload").onclick = () => {
 
 function updateTitleFromJsonOutput() {
 
-    if (!data || !Array.isArray(data) || data.length === 0) {
+    if (!globalData || !Array.isArray(globalData) || globalData.length === 0) {
         console.warn("Data vazio — não é possível atualizar o título.");
         return;
     }
 
-    const firstRow = data[0];
+    const firstRow = globalData[0];
 
     const firstKey = Object.keys(firstRow)[0];
 
