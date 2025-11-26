@@ -360,8 +360,8 @@ async def upload_file(file: UploadFile = File(...)):
 
         if any(k in normalized for k in cond_keywords):
             cond_flags.append(True)
-            final_lat.append("Não encontrado")
-            final_lng.append("Não encontrado")
+            final_lat.append("")
+            final_lng.append("")
             partial_flags.append(False)
             continue
 
