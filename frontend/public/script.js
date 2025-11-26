@@ -119,9 +119,7 @@ document.getElementById("btnUpload").onclick = () => {
 
     document.getElementById("statTotalLines").innerText = data.length;
 
-    let notFound = data.filter(row =>
-        Object.values(row).includes("Não encontrado")
-    ).length;
+    let notFound = data.filter(row => row["Geo_Latitude"] === "Não encontrado  Não encontrado").length;
 
     document.getElementById("statNotFound").innerText = notFound;
     
@@ -237,7 +235,7 @@ function addRowFixed(row, visibleCols) {
 
             const input = document.createElement("input");
             input.type = "text";
-            input.value = isCond ? "Condomínio" : strValue;
+            input.value = (isCond && col === "Geo_Latitude") ? "Condomínio" : strValue;
 
             input.className = `
                 w-full h-full px-2 py-1 outline-none
