@@ -135,30 +135,20 @@ document.getElementById("btnUpload").onclick = () => {
 };
 
 function updateTitleFromJsonOutput() {
-    const raw = document.getElementById("jsonOutput").innerText.trim();
 
-    if (!raw || raw.length < 2) {
-        console.warn("jsonOutput está vazio — aguardando carregamento...");
+    if (!data || !Array.isArray(data) || data.length === 0) {
+        console.warn("Data vazio — não é possível atualizar o título.");
         return;
     }
 
-    let parsed;
+    const firstRow = data[0];
 
-    try {
-        parsed = JSON.parse(raw);
-    } catch (e) {
-        console.error("Erro ao converter jsonOutput em JSON:", raw);
-        return;
-    }
+    const firstKey = Object.keys(firstRow)[0];
 
-    if (Array.isArray(parsed) && parsed.length > 0) {
-        const firstRow = parsed[0];
-        const firstKey = Object.keys(firstRow)[0];
-        const firstValue = firstRow[firstKey];
+    const firstValue = firstRow[firstKey];
 
-        document.getElementById("fileTitle").textContent =
-            firstValue || "Arquivo carregado";
-    }
+    document.getElementById("resultTitle").textContent =
+        firstValue || "Arquivo carregado";
 }
 
 // =========================
@@ -265,7 +255,7 @@ function addRowFixed(row, visibleCols) {
             input.type = "text";
             const finalValue = (isCond && col === "Geo_Lat_Lng") ? "Condomínio" : strValue;
             input.value = finalValue;
-            
+
             if (col === "Geo_Latitude" || col === "Geo_Longitude") {
                 globalData[row][col] = finalValue;
             }

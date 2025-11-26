@@ -28,49 +28,70 @@
 <main class="flex-1 overflow-auto p-6">
     <div class="w-full bg-white shadow rounded-xl p-6">
 
-      <!-- UPLOAD -->
-      <div class="mb-6">
-            <label id="fileTitle" class="block text-gray-800 mb-2 font-semibold">
+        <!-- UPLOAD MODERNO -->
+        <div class="mb-6">
+            <label id="fileTitle" class="block text-gray-800 mb-3 text-lg font-semibold tracking-wide">
                 Selecione um arquivo .xlsx
             </label>
 
-            <div class="flex gap-4">
+            <div class="flex flex-col md:flex-row items-start md:items-center gap-4 bg-white border border-gray-300 shadow-sm rounded-xl p-4">
 
+                <!-- INPUT REAL (OCULTO) -->
                 <input id="fileInput" type="file" accept=".xlsx" class="hidden">
 
+                <!-- BOTÃO IMPORTAR -->
                 <label for="fileInput"
-                    class="bg-gray-200 border border-gray-400 px-4 py-3 rounded-lg cursor-pointer hover:bg-gray-300 transition">
+                    class="flex items-center gap-2 bg-gray-100 border border-gray-300 px-5 py-3 rounded-lg cursor-pointer 
+                        hover:bg-gray-200 hover:border-gray-400 transition shadow-sm text-gray-800 font-medium">
+
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-600" fill="none"
+                        viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 4v16h16V4H4zm4 4h8v2H8V8z" />
+                    </svg>
                     Importar arquivo
                 </label>
 
-                <span id="fileName" class="text-gray-600 mt-auto mb-auto">
+                <!-- NOME DO ARQUIVO -->
+                <span id="fileName" class="text-gray-600 text-sm font-medium italic">
                     Nenhum arquivo escolhido
                 </span>
 
+                <!-- BOTÃO ENVIAR -->
                 <button id="btnUpload"
-                        class="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 transition shadow-md">
+                        class="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold 
+                            hover:bg-blue-700 active:scale-95 transition shadow-md ml-auto">
+
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-white" fill="none"
+                        viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M5 12h14m-7-7v14" />
+                    </svg>
                     Enviar
                 </button>
-            </div>
-        </div>
 
-        <div id="progressContainer" class="mt-4 hidden">
-            <div class="flex justify-between mb-1">
-                <span id="progressStatus" class="text-sm font-medium text-blue-700">Enviando...</span>
-                <span id="progressPercent" class="text-sm font-medium text-blue-700">0%</span>
             </div>
-            <div class="w-full bg-gray-200 rounded-full h-4 shadow-inner overflow-hidden">
-                <div id="progressBar" class="bg-blue-600 h-4 rounded-full progress-bar-fill" style="width:0"></div>
-            </div>
-        </div>
 
-      </div>
+            <!-- PROGRESSO -->
+            <div id="progressContainer" class="mt-6 hidden">
+                <div class="flex justify-between mb-2">
+                    <span id="progressStatus" class="text-sm font-medium text-blue-700">Enviando...</span>
+                    <span id="progressPercent" class="text-sm font-medium text-blue-700">0%</span>
+                </div>
+
+                <div class="w-full bg-gray-200 rounded-full h-4 shadow-inner overflow-hidden">
+                    <div id="progressBar" class="bg-blue-600 h-4 rounded-full progress-bar-fill" style="width:0"></div>
+                </div>
+            </div>
+    </div>
 
       <!-- RESULTADO -->
       <div id="result" class="mt-8 hidden">
         
         <div class="flex justify-between items-center mb-4 border-b pb-2">
-            <h2 class="text-2xl font-semibold text-gray-800">Resultado da Análise</h2>
+            <h2 id="resultTitle" class="text-2xl font-semibold text-gray-800">
+                Resultado da Análise
+            </h2>
 
             <button id="btnExport" onclick="openPopup()"
                     class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded flex items-center shadow-sm">
@@ -194,7 +215,7 @@
 </div>
 
 <footer onclick="openInfoPopup()" 
-        class="bg-gray-200 text-gray-700 text-center py-4 mt-8 border-t cursor-pointer hover:bg-gray-300 transition">
+        class="bg-gray-200 text-gray-700 text-center py-4 mt-8 border-t cursor-pointer hover:bg-gray-300 transition relative z-30">
     <p class="text-sm tracking-wide">
         Developed by <span class="font-semibold underline">Danilo Carneiro</span>
     </p>

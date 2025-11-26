@@ -235,16 +235,15 @@ def normalize_address(raw, bairro):
 
         # QUADRA
         q_match = re.search(
-            r"\bQ(?:U?A?D?R?A?)?\s*[:,\.\-]?\s*([A-Z]?\d{1,3}[A-Z]?)",
+            r"\bQ(?:U?A?D?R?A?)?\s*[:,.\-]?\s*([A-Z]?\d{1,3}[A-Z]?)(?=\s*L(?:O?T?E?)?)",
             text_upper
         )
 
         # LOTE
         l_match = re.search(
-            r"\bL(?:O?T?E?)?\s*[:,\.\-]?\s*([A-Z]?\d{1,3}[A-Z]?)",
+            r"\bL(?:O?T?E?)?\s*[:,.\-]?\s*([A-Z]?\d{1,3}[A-Z]?)",
             text_upper
         )
-
         # -------------------------
         # EXTRAÇÃO DA QUADRA
         # -------------------------
@@ -313,12 +312,7 @@ def normalize_address(raw, bairro):
         # 7. REGRA FINAL — Se é condomínio, força o nome da rua
         # ============================================================
         if is_condominio:
-            if quadra and lote:
-                return f"Condominio, {quadra}-{lote}"
-            elif quadra:
-                return f"Condominio, {quadra}"
-            else:
-                return "Condominio"
+            return "Condominio"
 
         # ============================================================
         # 8. Retorno normal (rua padrão)
