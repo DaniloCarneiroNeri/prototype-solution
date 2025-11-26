@@ -480,13 +480,10 @@ async def upload_file(file: UploadFile = File(...)):
             else:
                 tentativa_extenso = rua_convertida
 
-            df["Normalized_Address"] = tentativa_extenso
-
             # Faz a tentativa
             lat3, lng3, cep_here3 = await geocode_with_here(tentativa_extenso)
-
             match_ok3 = cep_here3 and cep_here3.replace("-", "") == cep_original.replace("-", "")
-            partial_flags.append(False)
+
             if match_ok3:
                 final_lat.append(lat3)
                 final_lng.append(lng3)
