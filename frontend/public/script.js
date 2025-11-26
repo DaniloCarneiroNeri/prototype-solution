@@ -128,7 +128,7 @@ document.getElementById("btnUpload").onclick = () => {
     let partial = data.filter(r => r["Partial_Match"] === true).length;
     document.getElementById("statPartial").innerText = partial;
 
-    let cond = data.filter(r => r["Partial_Cond"] === true).length;
+    let cond = data.filter(r => r["Cond_Match"] === true).length;
     document.getElementById("statCond").innerText = cond;
 
     renderTable(columns, data);
@@ -147,7 +147,7 @@ function renderTable(columns, data) {
     tableHead.innerHTML = "";
     tableBody.innerHTML = "";
 
-    const hiddenCols = ["Partial_Match", "Unnamed: 0","Geo_Longitude","Stop","Latitude","Longitude","Partial_Cond"];
+    const hiddenCols = ["Partial_Match", "Unnamed: 0","Geo_Longitude","Stop","Latitude","Longitude","Cond_Match"];
 
     const visibleCols = columns.filter(c => !hiddenCols.includes(c));
 
@@ -208,8 +208,7 @@ function addRowFixed(row, visibleCols) {
     const tr = document.createElement("tr");
     tr.className = "odd:bg-white even:bg-slate-50 hover:bg-blue-50";
 
-    const unifiedValue =
-        `${row["Geo_Latitude"] ?? ""}  ${row["Geo_Longitude"] ?? ""}`;
+    const unifiedValue = `${row["Geo_Latitude"] ?? ""}  ${row["Geo_Longitude"] ?? ""}`;
 
     visibleCols.forEach(col => {
         const td = document.createElement("td");
@@ -231,7 +230,7 @@ function addRowFixed(row, visibleCols) {
 
         const isNotFound = strValue.includes("Não encontrado");
         const isPartial = row["Partial_Match"] === true && col === "Geo_Lat_Lng";
-        const isCond = row["Partial_Cond"] === true 
+        const isCond = row["Cond_Match"] === true 
 
         if (isNotFound || isPartial || isCond) {
             td.classList.add("p-0");
@@ -349,7 +348,7 @@ function exportToCircuit() {
         return;
     }
 
-    let csv = "Geo_Latitude,Geo_Longitude,Observacoes\n";
+    let csv = "Geo_Latitude,Observacoes\n";
 
     rows.forEach(r => {
         // Junta sequências: 28, 29, 30
@@ -358,7 +357,7 @@ function exportToCircuit() {
         const obs =
             `${seqStr} - Quadra:${r.Quadra} - Lote:${r.Lote}`;
 
-        csv += `${r.Geo_Latitude},${r.Geo_Longitude},"${obs}"\n`;
+        csv += `${r.Geo_Latitude},"${obs}"\n`;
     });
 
     const blob = new Blob([csv], { type: "text/csv" });
