@@ -394,13 +394,19 @@ document.getElementById("popupExportCircuit").onclick = () => {
 };
 
 function openInfoPopup() {
-    document.getElementById("infoPopup").classList.remove("hidden");
-    document.getElementById("infoPopup").classList.add("flex");
+    const popup = document.getElementById("infoPopup");
+    popup.classList.remove("hidden");
+    popup.classList.add("flex");
+
+    document.body.classList.add("backdrop-blur-sm");
 }
 
 function closeInfoPopup() {
-    document.getElementById("infoPopup").classList.add("hidden");
-    document.getElementById("infoPopup").classList.remove("flex");
+    const popup = document.getElementById("infoPopup");
+    popup.classList.add("hidden");
+    popup.classList.remove("flex");
+
+    document.body.classList.remove("backdrop-blur-sm");
 }
 
 // =========================

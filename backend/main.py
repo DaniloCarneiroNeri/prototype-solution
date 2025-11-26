@@ -422,10 +422,12 @@ async def upload_file(file: UploadFile = File(...)):
         # ---------------------------------------------------------
 
         # Captura rua antes da vírgula
-        rua_crua = str(row["Destination Address"]).strip().upper()
+        rua_crua_original = str(row.get("Destination Address", "")).strip()
 
+        rua_crua_upper = re.sub(r'\s+', ' ', rua_crua_original).upper()
+        
         # Regex: Rua <numero>,
-        padrao_rua_numero = re.match(r"^RUA\s+(\d+)\s*,", rua_crua)
+        padrao_rua_numero = re.match(r'^\s*(?:RUA|R\.?)\s*(?:N(?:º|O)?\s*)?(\d{1,3})\s*,', rua_crua_upper, flags=re.IGNORECASE)
 
         if padrao_rua_numero:
             numero = padrao_rua_numero.group(1)
@@ -466,15 +468,19 @@ async def upload_file(file: UploadFile = File(...)):
                 u = n % 10       # parte da unidade
                 return f"{dezenas[d]} e {unidades[u]}"
 
-            numero_extenso = numero_por_extenso(numero).capitalize()
-            rua_convertida = re.sub(r"^RUA\s+\d+",f"Rua {numero_extenso}",rua_crua,flags=re.IGNORECASE)
+
+            numero_extenso = numero_por_extenso(int(numero)).capitalize()
+
+            rua_convertida = f"Rua {numero_extenso}"
 
             # Montamos nova query preservando quadra e lote
-            tentativa_extenso = rua_convertida
             if "," in normalized:
-                tentativa_extenso += ", " + normalized.split(",",1)[1].strip()
+                resto = normalized.split(",", 1)[1].strip()
+                tentativa_extenso = f"{rua_convertida}, {resto}"
             else:
                 tentativa_extenso = rua_convertida
+
+            print("TENTATIVA EXTENSO:", tentativa_extenso)
 
             # Faz a tentativa
             lat3, lng3, cep_here3 = await geocode_with_here(tentativa_extenso)
