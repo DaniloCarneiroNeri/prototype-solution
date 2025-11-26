@@ -430,6 +430,39 @@ function closeInfoPopup() {
     document.body.classList.remove("backdrop-blur-sm");
 }
 
+    const html = document.documentElement;
+    const btn = document.getElementById("toggleTheme");
+    const icon = document.getElementById("themeIcon");
+
+    function setIcon() {
+        if (html.classList.contains("dark")) {
+            icon.innerHTML = `
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 3v1m0 16v1m8-9h1M3 12H2m15.364-6.364l.707.707M6.343 17.657l-.707.707m12.728 0l-.707-.707M6.343 6.343l-.707-.707" />
+            `;
+        } else {
+            icon.innerHTML = `
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+            `;
+        }
+    }
+
+    // Verifica se tem preferência salva
+    if (localStorage.getItem("theme") === "dark") {
+        html.classList.add("dark");
+    }
+
+    setIcon();
+
+    btn.addEventListener("click", () => {
+        html.classList.toggle("dark");
+        localStorage.setItem("theme",
+            html.classList.contains("dark") ? "dark" : "light"
+        );
+        setIcon();
+    });
+    
 // =========================
 // Filtro Dinâmico
 // =========================

@@ -13,215 +13,250 @@
     tfoot { position: sticky; bottom: 0; z-index: 20; background-color: #f3f4f6; border-top: 2px solid #d1d5db; }
     .progress-bar-fill { transition: width 0.3s ease; }
   </style>
+    <script>
+    tailwind.config = {
+        darkMode: 'class'
+    }
+    </script>
+
 </head>
 
-<body class="bg-gray-100 h-screen w-screen flex flex-col">
+<body class="bg-gray-100 dark:bg-gray-800 dark:text-gray-200 h-screen w-screen flex flex-col">
 
-<header class="bg-blue-700 text-white p-4 shadow-md flex items-center gap-3">
-    <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M9 20l-5.447-2.724A2 2 0 013 15.382V6a2 2 0 012-2h1m5 0h1a2 2 0 012 2v7.382a2 2 0 01-1.553 1.894L9 20zm0 0h6" />
-    </svg>
-    <h1 class="text-2xl font-bold tracking-wide">Route Planner</h1>
-</header>
-
-<main class="flex-1 overflow-auto p-6">
-    <div class="w-full bg-white shadow rounded-xl p-6">
-
-        <!-- UPLOAD MODERNO -->
-        <div class="mb-6">
-            <label id="fileTitle" class="block text-gray-800 mb-3 text-lg font-semibold tracking-wide">
-                Selecione um arquivo .xlsx
-            </label>
-
-            <div class="flex flex-col md:flex-row items-start md:items-center gap-4 bg-white border border-gray-300 shadow-sm rounded-xl p-4">
-
-                <!-- INPUT REAL (OCULTO) -->
-                <input id="fileInput" type="file" accept=".xlsx" class="hidden">
-
-                <!-- BOTÃO IMPORTAR -->
-                <label for="fileInput"
-                    class="flex items-center gap-2 bg-gray-100 border border-gray-300 px-5 py-3 rounded-lg cursor-pointer 
-                        hover:bg-gray-200 hover:border-gray-400 transition shadow-sm text-gray-800 font-medium">
-
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-600" fill="none"
-                        viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M4 4v16h16V4H4zm4 4h8v2H8V8z" />
-                    </svg>
-                    Importar arquivo
-                </label>
-
-                <!-- NOME DO ARQUIVO -->
-                <span id="fileName" class="text-gray-600 text-sm font-medium italic">
-                    Nenhum arquivo escolhido
-                </span>
-
-                <!-- BOTÃO ENVIAR -->
-                <button id="btnUpload"
-                        class="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold 
-                            hover:bg-blue-700 active:scale-95 transition shadow-md ml-auto">
-
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-white" fill="none"
-                        viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M5 12h14m-7-7v14" />
-                    </svg>
-                    Enviar
-                </button>
-
-            </div>
-
-            <!-- PROGRESSO -->
-            <div id="progressContainer" class="mt-6 hidden">
-                <div class="flex justify-between mb-2">
-                    <span id="progressStatus" class="text-sm font-medium text-blue-700">Enviando...</span>
-                    <span id="progressPercent" class="text-sm font-medium text-blue-700">0%</span>
-                </div>
-
-                <div class="w-full bg-gray-200 rounded-full h-4 shadow-inner overflow-hidden">
-                    <div id="progressBar" class="bg-blue-600 h-4 rounded-full progress-bar-fill" style="width:0"></div>
-                </div>
-            </div>
-    </div>
-
-      <!-- RESULTADO -->
-      <div id="result" class="mt-8 hidden">
-        
-        <div class="flex justify-between items-center mb-4 border-b pb-2">
-            <h2 id="resultTitle" class="text-2xl font-semibold text-gray-800">
-                Resultado da Análise
-            </h2>
-
-            <button id="btnExport" onclick="openPopup()"
-                    class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded flex items-center shadow-sm">
-                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-                Exportar
-            </button>
-        </div>
-
-        <div class="border border-gray-300 rounded-lg shadow-sm bg-white">
-            <div class="table-container rounded-t-lg">
-                <table class="min-w-full text-sm border-collapse" id="dataTable">
-                    <thead id="tableHead"></thead>
-                    <tbody id="tableBody"></tbody>
-                    <tfoot class="text-gray-700 font-semibold bg-gray-100">
-                        <tr>
-                            <td colspan="100%" class="px-4 py-3 text-right">
-                                <div class="flex justify-end gap-6">
-                                   <span>Total de Linhas: 
-                                      <span id="statTotalLines" class="text-blue-600">0</span>
-                                  </span>
-
-                                  <span>Linhas com erro: 
-                                      <span id="statNotFound" class="text-red-600">0</span>
-                                  </span>
-
-                                  <span>Parcialmente encontradas: 
-                                      <span id="statPartial" class="text-yellow-600">0</span>
-                                  </span>
-
-                                  <span>Marcados como Condomíno: 
-                                      <span id="statCond" class="text-purple-600">0</span>
-                                  </span>
-                                </div>
-                            </td>
-                        </tr>
-                    </tfoot>
-                </table>
-            </div>
-        </div>
-
-        <div class="mt-8">
-            <details>
-                <summary class="cursor-pointer text-gray-500 hover:text-gray-700">Ver JSON Bruto</summary>
-                <pre id="jsonOutput" class="mt-2 bg-gray-900 text-green-300 p-4 rounded-lg text-xs overflow-auto max-h-40"></pre>
-            </details>
-        </div>
-
-      </div>
-    </div>
-</main>
-
-<!-- POPUP -->
-<div id="exportPopup" class="fixed inset-0 bg-black bg-opacity-40 hidden items-center justify-center">
-    <div class="bg-white p-6 rounded-xl shadow-xl w-80">
-      <h2 class="text-xl font-bold mb-4 text-gray-800">Exportar dados</h2>
-
-      <button id="popupExportExcel"
-              class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded mb-3">
-        Exportar Excel
-      </button>
-
-      <button id="popupExportCircuit"
-              class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded">
-        Exportar para Circuit
-      </button>
-
-      <button onclick="closePopup()"
-              class="w-full mt-4 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded">
-        Cancelar
-      </button>
-    </div>
-</div>
-
-<!-- POPUP SOBRE O SOFTWARE -->
-<div id="infoPopup" class="fixed inset-0 bg-black bg-opacity-40 backdrop-blur-md hidden items-center justify-center z-[9999]">
-    <div class="bg-white p-7 rounded-xl shadow-2xl w-96 relative border border-gray-300">
-
-        <!-- Botão fechar -->
-        <button onclick="closeInfoPopup()" 
-                class="absolute top-3 right-3 text-gray-500 hover:text-gray-700 text-xl font-bold">
-            ×
-        </button>
-
-        <!-- LOGO -->
-        <div class="flex flex-col items-center mb-4">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-14 h-14 text-blue-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <header class="bg-blue-700 dark:bg-gray-900 text-white p-4 shadow-md flex items-center justify-between gap-3">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M9 20l-5.447-2.724A2 2 0 013 15.382V6a2 2 0 012-2h1m5 0h1a2 2 0 012 2v7.382a2 2 0 01-1.553 1.894L9 20zm0 0h6" />
+        </svg>
+        <h1 class="text-2xl font-bold tracking-wide">Route Planner</h1>
+            <div class="flex items-center gap-3">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                      d="M9 20l-5.447-2.724A2 2 0 013 15.382V6a2 2 0 012-2h1m5 0h1a2 2 0 012 2v7.382a2 2 0 01-1.553 1.894L9 20zm0 0h6" />
+                    d="M9 20l-5.447-2.724A2 2 0 013 15.382V6a2 2 0 012-2h1m5 0h1a2 2 0 012 2v7.382a2 2 0 01-1.553 1.894L9 20zm0 0h6" />
             </svg>
 
-            <h2 class="text-2xl font-bold text-gray-800 mt-2 tracking-wide">Route Planner</h2>
+            <h1 class="text-2xl font-bold tracking-wide">Route Planner</h1>
         </div>
 
-        <!-- INFO -->
-        <div class="text-gray-700 text-sm space-y-2">
-            <p><span class="font-semibold">Descrição:</span><br>
-               Software profissional para otimização e planejamento inteligente de rotas de entrega.
-            </p>
-
-            <p><span class="font-semibold">Desenvolvedor:</span><br>
-               Danilo Carneiro Neri
-            </p>
-
-            <p><span class="font-semibold">Contato:</span><br>
-               (62) 99625-0706
-            </p>
-
-            <p><span class="font-semibold">Email:</span><br>
-               danilo.carneironeri@gmail.com
-            </p>
-        </div>
-
-        <button onclick="closeInfoPopup()" 
-                class="w-full mt-6 bg-blue-700 hover:bg-blue-800 text-white font-semibold py-2 rounded-lg">
-            Fechar
+        <!-- BOTÃO DARK MODE -->
+        <button id="toggleTheme"
+                class="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition">
+            <svg id="themeIcon" xmlns="http://www.w3.org/2000/svg"
+                class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            </svg>
         </button>
+    </header>
+
+    <main class="flex-1 overflow-auto p-6">
+        <div class="w-full bg-white dark:bg-gray-900 shadow rounded-xl p-6">
+
+            <!-- UPLOAD MODERNO -->
+            <div class="mb-6">
+                <label id="fileTitle" class="block text-gray-800 mb-3 text-lg font-semibold tracking-wide">
+                    Selecione um arquivo .xlsx
+                </label>
+
+                <div class="flex flex-col md:flex-row items-start md:items-center gap-4 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 shadow-sm rounded-xl p-4">
+
+                    <!-- INPUT REAL (OCULTO) -->
+                    <input id="fileInput" type="file" accept=".xlsx" class="hidden">
+
+                    <!-- BOTÃO IMPORTAR -->
+                    <label for="fileInput"
+                        class="flex items-center gap-2 bg-gray-100 border border-gray-300 px-5 py-3 rounded-lg cursor-pointer 
+                            hover:bg-gray-200 hover:border-gray-400 transition shadow-sm text-gray-800 font-medium">
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-600" fill="none"
+                            viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 4v16h16V4H4zm4 4h8v2H8V8z" />
+                        </svg>
+                        Importar arquivo
+                    </label>
+
+                    <!-- NOME DO ARQUIVO -->
+                    <span id="fileName" class="text-gray-600 text-sm font-medium italic">
+                        Nenhum arquivo escolhido
+                    </span>
+
+                    <!-- BOTÃO ENVIAR -->
+                    <button id="btnUpload"
+                            class="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold 
+                                hover:bg-blue-700 active:scale-95 transition shadow-md ml-auto">
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-white" fill="none"
+                            viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M5 12h14m-7-7v14" />
+                        </svg>
+                        Enviar
+                    </button>
+
+                </div>
+
+                <!-- PROGRESSO -->
+                <div id="progressContainer" class="mt-6 hidden">
+                    <div class="flex justify-between mb-2">
+                        <span id="progressStatus" class="text-sm font-medium text-blue-700">Enviando...</span>
+                        <span id="progressPercent" class="text-sm font-medium text-blue-700">0%</span>
+                    </div>
+
+                    <div class="w-full bg-gray-200 rounded-full h-4 shadow-inner overflow-hidden">
+                        <div id="progressBar" class="bg-blue-600 h-4 rounded-full progress-bar-fill" style="width:0"></div>
+                    </div>
+                </div>
+        </div>
+
+        <!-- RESULTADO -->
+        <div id="result" class="mt-8 hidden">
+            
+            <div class="flex justify-between items-center mb-4 border-b pb-2">
+                <h2 id="resultTitle" class="text-2xl font-semibold text-gray-800">
+                    Resultado da Análise
+                </h2>
+
+                <button id="btnExport" onclick="openPopup()"
+                        class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded flex items-center shadow-sm">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Exportar
+                </button>
+            </div>
+
+            <div class="border border-gray-300 rounded-lg shadow-sm bg-white">
+                <div class="table-container rounded-t-lg">
+                    <table class="min-w-full text-sm border-collapse text-gray-800 dark:text-gray-200bg-white dark:bg-gray-900" id="dataTable">
+                        <thead id="tableHead"
+                            class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                        </thead>
+
+                        <tbody id="tableBody"
+                            class="bg-white dark:bg-gray-900">
+                        </tbody>
+
+                        <tfoot class="text-gray-700 dark:text-gray-300 font-semibold 
+                                    bg-gray-100 dark:bg-gray-800 border-t border-gray-300 dark:border-gray-600">
+                            <tr>
+                                <td colspan="100%" class="px-4 py-3 text-right">
+                                    <div class="flex justify-end gap-6">
+
+                                        <span>
+                                            Total de Linhas:
+                                            <span id="statTotalLines" class="text-blue-600 dark:text-blue-400">0</span>
+                                        </span>
+
+                                        <span>
+                                            Linhas com erro:
+                                            <span id="statNotFound" class="text-red-600 dark:text-red-400">0</span>
+                                        </span>
+
+                                        <span>
+                                            Parcialmente encontradas:
+                                            <span id="statPartial" class="text-yellow-600 dark:text-yellow-400">0</span>
+                                        </span>
+
+                                        <span>
+                                            Marcados como Condomínio:
+                                            <span id="statCond" class="text-purple-600 dark:text-purple-400">0</span>
+                                        </span>
+
+                                    </div>
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+
+            <div class="mt-8">
+                <details>
+                    <summary class="cursor-pointer text-gray-500 hover:text-gray-700">Ver JSON Bruto</summary>
+                    <pre id="jsonOutput" class="mt-2 bg-gray-900 text-green-300 p-4 rounded-lg text-xs overflow-auto max-h-40"></pre>
+                </details>
+            </div>
+
+        </div>
+        </div>
+    </main>
+
+    <!-- POPUP -->
+    <div id="exportPopup" class="fixed inset-0 bg-black/50 dark:bg-black/60 backdrop-blur-lg hidden items-center justify-center z-[9999] transition-all">
+        <div class="bg-white p-6 rounded-xl shadow-xl w-80">
+        <h2 class="text-xl font-bold mb-4 text-gray-800">Exportar dados</h2>
+
+        <button id="popupExportExcel"
+                class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded mb-3">
+            Exportar Excel
+        </button>
+
+        <button id="popupExportCircuit"
+                class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded">
+            Exportar para Circuit
+        </button>
+
+        <button onclick="closePopup()"
+                class="w-full mt-4 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded">
+            Cancelar
+        </button>
+        </div>
     </div>
-</div>
 
-<footer onclick="openInfoPopup()" 
-        class="bg-gray-200 text-gray-700 text-center py-4 mt-8 border-t cursor-pointer hover:bg-gray-300 transition relative z-30">
-    <p class="text-sm tracking-wide">
-        Developed by <span class="font-semibold underline">Danilo Carneiro</span>
-    </p>
-</footer>
+    <!-- POPUP SOBRE O SOFTWARE -->
+    <div id="infoPopup" class="fixed inset-0 bg-black/50 dark:bg-black/60 backdrop-blur-lg hidden items-center justify-center z-[9999] transition-all">
+        <div class="bg-white p-7 rounded-xl shadow-2xl w-96 relative border border-gray-300">
 
-<script src="script.js"></script>
+            <!-- Botão fechar -->
+            <button onclick="closeInfoPopup()" 
+                    class="absolute top-3 right-3 text-gray-500 hover:text-gray-700 text-xl font-bold">
+                ×
+            </button>
+
+            <!-- LOGO -->
+            <div class="flex flex-col items-center mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-14 h-14 text-blue-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M9 20l-5.447-2.724A2 2 0 013 15.382V6a2 2 0 012-2h1m5 0h1a2 2 0 012 2v7.382a2 2 0 01-1.553 1.894L9 20zm0 0h6" />
+                </svg>
+
+                <h2 class="text-2xl font-bold text-gray-800 mt-2 tracking-wide">Route Planner</h2>
+            </div>
+
+            <!-- INFO -->
+            <div class="text-gray-700 text-sm space-y-2">
+                <p><span class="font-semibold">Descrição:</span><br>
+                Software profissional para otimização e planejamento inteligente de rotas de entrega.
+                </p>
+
+                <p><span class="font-semibold">Desenvolvedor:</span><br>
+                Danilo Carneiro Neri
+                </p>
+
+                <p><span class="font-semibold">Contato:</span><br>
+                (62) 99625-0706
+                </p>
+
+                <p><span class="font-semibold">Email:</span><br>
+                danilo.carneironeri@gmail.com
+                </p>
+            </div>
+
+            <button onclick="closeInfoPopup()" 
+                    class="w-full mt-6 bg-blue-700 hover:bg-blue-800 text-white font-semibold py-2 rounded-lg">
+                Fechar
+            </button>
+        </div>
+    </div>
+
+    <footer onclick="openInfoPopup()" 
+            class="bg-gray-200 dark:bg-gray-900 text-gray-700 dark:text-gray-300 text-center py-4 mt-8 border-t cursor-pointer hover:bg-gray-300 dark:hover:bg-gray-800 transition relative z-30">
+        <p class="text-sm tracking-wide">
+            Developed by <span class="font-semibold underline">Danilo Carneiro</span>
+        </p>
+    </footer>
+
+    <script src="script.js"></script>
 
 </body>
 </html>
