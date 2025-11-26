@@ -169,16 +169,16 @@ def normalize_address(raw):
 
         # QUADRA — aceita letras antes do número, mas remove letra
         q_match = re.search(
-            r"\bQ(?:U?A?D?R?A?)?[:\.\s]*([A-Z]?)(\d{1,3})\b",
+            r"\bQ(?:U?A?D?R?A?)?[:\.\s]*([A-Z]?\s*\d{1,3})\b",
             text_upper
         )
 
         # LOTE — aceita letras antes do número, mas remove letra
         l_match = re.search(
-            r"\bL(?:O?T?E?)?[:\.\s]*([A-Z]?)(\d{1,3})\b",
+            r"\bL(?:O?T?E?)?[:\.\s]*([A-Z]?\s*\d{1,3})\b",
             text_upper
         )
-
+        
         quadra = None
         lote = None
 
