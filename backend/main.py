@@ -47,8 +47,22 @@ def normalize_address(raw, bairro):
         # -------------------------------
         raw_combined = f"{text} {bairro}".upper()
 
-        if any(word in raw_combined for word in ["COND", "CONDOMINIO", "CONDOMÍNIO"]):
+        ignore_cond = [
+            "CONDOMINIO DAS ESMERALDAS",
+            "CONDOMÍNIO DAS ESMERALDAS"
+        ]
+
+        if any(bad in raw_combined for bad in ignore_cond):
+            is_condominio = False
+
+        elif any(word in raw_combined for word in [
+            "COND",
+            "CONDOMINIO",
+            "CONDOMÍNIO",
+            "JARDINS LISBOA"
+        ]):
             is_condominio = True
+
         else:
             is_condominio = False
 
@@ -390,7 +404,7 @@ async def upload_file(file: UploadFile = File(...)):
             continue
 
         # -------------------------------
-        # Segunda tentativa (com Bairro)
+        # tentativa (com Bairro)
         # -------------------------------
         second_query = f"{normalized}, {bairro}"
         lat2, lng2, cep_here2 = await geocode_with_here(second_query)
@@ -402,6 +416,67 @@ async def upload_file(file: UploadFile = File(...)):
             final_lng.append(lng2)
             partial_flags.append(False)
             continue
+
+        # ---------------------------------------------------------
+        # 2.5 TENTATIVA — Rua iniciando com número (ex.: "Rua 9 de Julho")
+        # ---------------------------------------------------------
+
+        # Captura rua antes da vírgula
+        rua_raw = normalized.split(",", 1)[0].strip()
+
+        # Regex para capturar número no início
+        m_num = re.match(r"^(.*?\b)(\d+)(.*)$", rua_raw)
+        if m_num:
+            prefixo = m_num.group(1) or ""   # "Rua "
+            numero  = m_num.group(2) or ""   # "9"
+            sufixo  = m_num.group(3) or ""   # " de Julho"
+
+            # Função simples para números por extenso
+            numeros_extenso = {
+                "1": "um", "2": "dois", "3": "três", "4": "quatro", "5": "cinco",
+                "6": "seis", "7": "sete", "8": "oito", "9": "nove",
+                "10": "dez", "11": "onze", "12": "doze", "13": "treze",
+                "14": "quatorze", "15": "quinze", "16": "dezesseis",
+                "17": "dezessete", "18": "dezoito", "19": "dezenove",
+                "20": "vinte", "21": "vinte e um", "22": "vinte e dois",
+                "23": "vinte e três", "24": "vinte e quatro", "25": "vinte e cinco",
+                "30": "trinta", "40": "quarenta", "50": "cinquenta",
+                "60": "sessenta", "70": "setenta", "80": "oitenta", "90": "noventa"
+            }
+
+            def numero_por_extenso(n):
+                if n in numeros_extenso:
+                    return numeros_extenso[n]
+
+                # 21–99 (composto)
+                if len(n) == 2:
+                    dezenas = n[0] + "0"       # "9" → "90"
+                    unidade = n[1]             # "7"
+                    if dezenas in numeros_extenso and unidade in numeros_extenso:
+                        return f"{numeros_extenso[dezenas]} e {numeros_extenso[unidade]}"
+                return n  # fallback
+
+            numero_extenso = numero_por_extenso(numero).capitalize()
+
+            # Montamos rua por extenso
+            rua_convertida = f"{prefixo}{numero_extenso}{sufixo}".strip()
+
+            # Montamos nova query preservando quadra e lote
+            tentativa_extenso = rua_convertida
+            if "," in normalized:
+                tentativa_extenso += ", " + normalized.split(",",1)[1].strip()
+
+            # Faz a tentativa
+            lat3, lng3, cep_here3 = await geocode_with_here(tentativa_extenso)
+
+            match_ok3 = cep_here3 and cep_here3.replace("-", "") == cep_original.replace("-", "")
+
+            if match_ok3:
+                final_lat.append(lat3)
+                final_lng.append(lng3)
+                partial_flags.append(False)
+                continue
+
         # -------------------------------
         # Trativa com cidade (com Bairro) (sem cep)
         # -------------------------------
@@ -414,8 +489,9 @@ async def upload_file(file: UploadFile = File(...)):
             final_lng.append(lng2)
             partial_flags.append(True)
             continue
+        
         # -----------------------------------------------
-        # Terceira tentativa (substituir bairro → Novo Horizonte)
+        # tentativa (substituir bairro → Novo Horizonte)
         # Somente nos bairros autorizados
         # -----------------------------------------------
         BAIRROS_RETRY = {
@@ -436,39 +512,39 @@ async def upload_file(file: UploadFile = File(...)):
                 partial_flags.append(False)
                 continue
 
-            # ----------------------------------------------
-            # Tentativa parcial — lote ± 1 / ± 2
-            # ----------------------------------------------
-            match_quad_lote = re.search(r",\s*([0-9]+)-([0-9]+)$", normalized)
+        # ----------------------------------------------
+        # Tentativa parcial — lote ± 1 / ± 2
+        # ----------------------------------------------
+        match_quad_lote = re.search(r",\s*([0-9]+)-([0-9]+)$", normalized)
 
-            if match_quad_lote:
-                quadra_num = int(match_quad_lote.group(1))
-                lote_num = int(match_quad_lote.group(2))
+        if match_quad_lote:
+            quadra_num = int(match_quad_lote.group(1))
+            lote_num = int(match_quad_lote.group(2))
 
-                base = normalized.rsplit(",", 1)[0]
+            base = normalized.rsplit(",", 1)[0]
 
-                offsets = [1, 2, -1, -2]
+            offsets = [1, 2, -1, -2]
 
-                found_partial = False
-                for off in offsets:
-                    novo_lote = lote_num + off
-                    if novo_lote < 0:
-                        continue
-
-                    tentativa = f"{base}, {quadra_num}-{novo_lote}"
-                    latp, lngp, cep_part = await geocode_with_here(tentativa)
-
-                    match_okp = cep_part and cep_part.replace("-", "") == cep_original.replace("-", "")
-
-                    if match_okp:
-                        final_lat.append(latp)
-                        final_lng.append(lngp)
-                        partial_flags.append(True)   # <<< PARCIAL
-                        found_partial = True
-                        break
-
-                if found_partial:
+            found_partial = False
+            for off in offsets:
+                novo_lote = lote_num + off
+                if novo_lote < 0:
                     continue
+
+                tentativa = f"{base}, {quadra_num}-{novo_lote}"
+                latp, lngp, cep_part = await geocode_with_here(tentativa)
+
+                match_okp = cep_part and cep_part.replace("-", "") == cep_original.replace("-", "")
+
+                if match_okp:
+                    final_lat.append(latp)
+                    final_lng.append(lngp)
+                    partial_flags.append(True)   # <<< PARCIAL
+                    found_partial = True
+                    break
+
+            if found_partial:
+                continue
 
         # -------------------------------
         # Falhou → "Não encontrado"
