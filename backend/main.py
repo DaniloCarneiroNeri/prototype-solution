@@ -167,39 +167,38 @@ def normalize_address(raw):
         #   LT B02 → lote = 2 (letra ignorada)
         # -------------------------------------------------------------------------
 
-        # QUADRA — aceita letras antes do número, mas remove letra
+        # QUADRA
         q_match = re.search(
             r"\bQ(?:U?A?D?R?A?)?[:\.\s]*([A-Z]?\s*\d{1,3})\b",
             text_upper
         )
 
-        # LOTE — aceita letras antes do número, mas remove letra
+        # LOTE
         l_match = re.search(
             r"\bL(?:O?T?E?)?[:\.\s]*([A-Z]?\s*\d{1,3})\b",
             text_upper
         )
-        
+
         quadra = None
         lote = None
 
-
         # -------------------------
-        # QUADRA
+        # EXTRAÇÃO DA QUADRA
         # -------------------------
         if q_match:
-            # grupo 1 → letra opcional (descartada)
-            # grupo 2 → número real da quadra
-            quadra_num = q_match.group(2).lstrip("0") or "0"
-            quadra = quadra_num
-
+            raw = q_match.group(1) or ""        # SEM group(2)
+            digits = re.sub(r"[^0-9]", "", raw)  # remove letra e espaços
+            if digits.isdigit():
+                quadra = digits.lstrip("0") or "0"
 
         # -------------------------
-        # LOTE
+        # EXTRAÇÃO DO LOTE
         # -------------------------
         if l_match:
-            lote_num = l_match.group(2).lstrip("0") or "0"
-            lote = lote_num
-
+            raw = l_match.group(1) or ""
+            digits = re.sub(r"[^0-9]", "", raw)
+            if digits.isdigit():
+                lote = digits.lstrip("0") or "0"
 
         # -------------------------------------------------------------------------
         # 3. Fallback para padrão “15-20”
@@ -207,9 +206,8 @@ def normalize_address(raw):
         if not (quadra and lote):
             fb = re.search(r"\b([0-9]+)\s*-\s*([0-9]+)\b", text_upper)
             if fb:
-                quadra = quadra or fb.group(1).lstrip("0") or "0"
-                lote = lote or fb.group(2).lstrip("0") or "0"
-
+                quadra = quadra or (fb.group(1).lstrip("0") or "0")
+                lote   = lote   or (fb.group(2).lstrip("0") or "0")
 
         # -------------------------------------------------------------------------
         # 4. Definição da rua (com proteção anti None)
