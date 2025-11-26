@@ -65,6 +65,10 @@ def normalize_address(raw, bairro):
             "BLOCO",
             "APT",
             "APTO",
+            "AP",
+            "APT.",
+            "APTO.",
+            "AP.",
             "PRÉDIO",
             "PREDIO",
             "RESIDENCIAL MIAMI",
@@ -172,16 +176,16 @@ def normalize_address(raw, bairro):
         # ============================================================
 
         rua_rc = re.search(
-            r"\b(?:RUA|R)\s+RC\s*[- ]?\s*(\d{1,3})(?=[\s,.\-]|$)",
+            r"\b(?:RUA|R)\s+RC\s*[- ]?\s*(\d{1,3})(?=[^\w]|$)",
             text_upper
         )
 
         if rua_rc:
-            numero = rua_rc.group(1).lstrip("0") or "0"   # mantém o número original
+            numero = rua_rc.group(1).lstrip("0") or "0"
             novo_padrao = f"RUA RC-{numero}"
 
             text = re.sub(
-                r"\b(?:RUA|R)\s+RC\s*[- ]?\s*\d{1,3}(?=[\s,.\-]|$)",
+                r"\b(?:RUA|R)\s+RC\s*[- ]?\s*\d{1,3}(?=[^\w]|$)",
                 novo_padrao,
                 text,
                 flags=re.IGNORECASE
@@ -241,13 +245,13 @@ def normalize_address(raw, bairro):
 
         # QUADRA
         q_match = re.search(
-            r"\bQ(?:U?A?D?R?A?)?\s*[:,.\-]?\s*([A-Z]?\d{1,3}[A-Z]?)(?=\s*L(?:O?T?E?)?\b)",
+            r"\bQ(?:U?A?D?R?A?)?\s*[:,.\- ]?\s*([A-Z]?\d{1,3}[A-Z]?)(?=\s*L(?:O?T?E?)?\b|\s*LT\b|\s*LOTE\b)",
             text_upper
         )
 
         # LOTE
         l_match = re.search(
-            r"\bL(?:O?T?E?)?\s*[:,.\-]?\s*([A-Z]?\d{1,3}[A-Z]?)",
+            r"\bL(?:O?T?E?)?\s*[:,.\- ]?\s*([A-Z]?\d{1,3}[A-Z]?)",
             text_upper
         )
 
@@ -255,7 +259,7 @@ def normalize_address(raw, bairro):
         # EXTRAÇÃO DA QUADRA
         # -------------------------
         if q_match:
-            raw = q_match.group(1) or ""
+            raw = q_match.group(1)
             digits = re.sub(r"[^0-9]", "", raw)
             if digits:
                 quadra = digits.lstrip("0") or "0"
