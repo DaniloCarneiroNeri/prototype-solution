@@ -422,7 +422,7 @@ async def upload_file(file: UploadFile = File(...)):
         # ---------------------------------------------------------
 
         # Captura rua antes da vírgula
-        rua_raw = normalized.split(",", 1)[0].strip()
+        rua_raw = str(row["Destination Address"]).split(",", 1)[0].strip()
 
         # Regex para capturar número no início
         m_num = re.match(r"^(.*?\b)(\d+)(.*)$", rua_raw)
@@ -431,34 +431,43 @@ async def upload_file(file: UploadFile = File(...)):
             numero  = m_num.group(2) or ""   # "9"
             sufixo  = m_num.group(3) or ""   # " de Julho"
 
-            # Função simples para números por extenso
-            numeros_extenso = {
-                "1": "um", "2": "dois", "3": "três", "4": "quatro", "5": "cinco",
-                "6": "seis", "7": "sete", "8": "oito", "9": "nove",
-                "10": "dez", "11": "onze", "12": "doze", "13": "treze",
-                "14": "quatorze", "15": "quinze", "16": "dezesseis",
-                "17": "dezessete", "18": "dezoito", "19": "dezenove",
-                "20": "vinte", "21": "vinte e um", "22": "vinte e dois",
-                "23": "vinte e três", "24": "vinte e quatro", "25": "vinte e cinco",
-                "30": "trinta", "40": "quarenta", "50": "cinquenta",
-                "60": "sessenta", "70": "setenta", "80": "oitenta", "90": "noventa"
-            }
-
             def numero_por_extenso(n):
-                if n in numeros_extenso:
-                    return numeros_extenso[n]
+                n = int(n)
 
-                # 21–99 (composto)
-                if len(n) == 2:
-                    dezenas = n[0] + "0"       # "9" → "90"
-                    unidade = n[1]             # "7"
-                    if dezenas in numeros_extenso and unidade in numeros_extenso:
-                        return f"{numeros_extenso[dezenas]} e {numeros_extenso[unidade]}"
-                return n  # fallback
+                unidades = [
+                    "", "um", "dois", "três", "quatro", "cinco",
+                    "seis", "sete", "oito", "nove"
+                ]
+
+                especiais = {
+                    10: "dez", 11: "onze", 12: "doze", 13: "treze",
+                    14: "quatorze", 15: "quinze", 16: "dezesseis",
+                    17: "dezessete", 18: "dezoito", 19: "dezenove"
+                }
+
+                dezenas = [
+                    "", "", "vinte", "trinta", "quarenta", "cinquenta",
+                    "sessenta", "setenta", "oitenta", "noventa"
+                ]
+
+                # 1 a 9
+                if 1 <= n < 10:
+                    return unidades[n]
+
+                # 10 a 19
+                if 10 <= n < 20:
+                    return especiais[n]
+
+                # 20, 30, 40 ...
+                if n % 10 == 0:
+                    return dezenas[n // 10]
+
+                # 21, 22, 23 ... 31, 32 ... 99
+                d = n // 10      # parte da dezena
+                u = n % 10       # parte da unidade
+                return f"{dezenas[d]} e {unidades[u]}"
 
             numero_extenso = numero_por_extenso(numero).capitalize()
-
-            # Montamos rua por extenso
             rua_convertida = f"{prefixo}{numero_extenso}{sufixo}".strip()
 
             # Montamos nova query preservando quadra e lote
@@ -489,7 +498,7 @@ async def upload_file(file: UploadFile = File(...)):
             final_lng.append(lng2)
             partial_flags.append(True)
             continue
-        
+
         # -----------------------------------------------
         # tentativa (substituir bairro → Novo Horizonte)
         # Somente nos bairros autorizados
