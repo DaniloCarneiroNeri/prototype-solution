@@ -129,20 +129,37 @@ document.getElementById("btnUpload").onclick = () => {
     let cond = data.filter(r => r["Cond_Match"] === true).length;
     document.getElementById("statCond").innerText = cond;
 
-    const raw = document.getElementById("jsonOutput").innerText;
-        if (Array.isArray(raw) && raw.length > 0) {
-            const firstRow = raw[0]; 
-            const firstKey = Object.keys(firstRow)[0]; 
-            const firstValue = firstRow[firstKey];  
-
-            document.getElementById("fileTitle").textContent = firstValue || "Arquivo carregado";
-        }
-        
+    updateTitleFromJsonOutput();
     renderTable(columns, data);
-
-};   
 }
+};
 
+function updateTitleFromJsonOutput() {
+    const raw = document.getElementById("jsonOutput").innerText.trim();
+
+    if (!raw || raw.length < 2) {
+        console.warn("jsonOutput está vazio — aguardando carregamento...");
+        return;
+    }
+
+    let parsed;
+
+    try {
+        parsed = JSON.parse(raw);
+    } catch (e) {
+        console.error("Erro ao converter jsonOutput em JSON:", raw);
+        return;
+    }
+
+    if (Array.isArray(parsed) && parsed.length > 0) {
+        const firstRow = parsed[0];
+        const firstKey = Object.keys(firstRow)[0];
+        const firstValue = firstRow[firstKey];
+
+        document.getElementById("fileTitle").textContent =
+            firstValue || "Arquivo carregado";
+    }
+}
 
 // =========================
 // Renderização da Tabela
