@@ -208,21 +208,38 @@ function addRowFixed(row, visibleCols) {
     visibleCols.forEach(col => {
         const td = document.createElement("td");
         const value = row[col] ?? "";
-
-        td.textContent = value;
         td.className = "border-b border-r px-4 py-2";
 
-        // 🔴 1 - Erro → vermelho
-        if (value === "Não encontrado") {
-            td.classList.add("text-red-600", "font-bold", "bg-red-50");
-        }
+        const isNotFound = value === "Não encontrado";
+        const isPartial = row["Partial_Match"] === true &&
+                          (col === "Geo_Latitude" || col === "Geo_Longitude");
 
-        // 🟡 2 - Parcial → amarelo claro
-        if (row["Partial_Match"] === true &&
-            (col === "Geo_Latitude" || col === "Geo_Longitude")) {
+        // 🔥  Agora estas células vão virar <input> editável
+        if (isNotFound || isPartial) {
+            td.classList.add("p-0"); // remove padding para o input encaixar
 
-            td.classList.add("bg-yellow-100", "text-yellow-900");
-            td.title = "Endereço encontrado parcialmente - VERIFIQUE";
+            const input = document.createElement("input");
+            input.type = "text";
+            input.value = value;
+            input.className = `
+                w-full h-full px-2 py-1 outline-none
+                ${isNotFound ? "text-red-600 font-bold bg-red-50" : ""}
+                ${isPartial ? "bg-yellow-100 text-yellow-900" : ""}
+            `.trim();
+
+            if (isPartial) {
+                input.title = "Endereço encontrado parcialmente - VERIFIQUE";
+            }
+
+            // atualizar o objeto original ao editar
+            input.addEventListener("input", () => {
+                row[col] = input.value;
+            });
+
+            td.appendChild(input);
+        } else {
+            // células normais
+            td.textContent = value;
         }
 
         tr.appendChild(td);
@@ -230,6 +247,7 @@ function addRowFixed(row, visibleCols) {
 
     tb.appendChild(tr);
 }
+
 
 // =========================
 // Exportação Excel
@@ -252,17 +270,13 @@ function exportToCircuit() {
         return;
     }
 
-    const rows = [];
+    const grouped = new Map(); // chave = "lat|lng"
 
     globalData.forEach((r, i) => {
+        const lat = r["Geo_Latitude"];
+        const lng = r["Geo_Longitude"];
 
-        // IGNORA LINHAS INVÁLIDAS
-        if (
-            r["Geo_Latitude"] === "Não encontrado" ||
-            r["Geo_Longitude"] === "Não encontrado"
-        ) {
-            return;
-        }
+        if (lat === "Não encontrado" || lng === "Não encontrado") return;
 
         const normalized = r["Normalized_Address"] || "";
         let quadra = "";
@@ -274,14 +288,23 @@ function exportToCircuit() {
             lote = match[2];
         }
 
-        const obs = `${i + 1}-Quadra:${quadra} - Lote:${lote}`;
+        const obs = `${i + 1} - Quadra:${quadra} - Lote:${lote}`;
+        const key = `${lat}|${lng}`;
 
-        rows.push({
-            Geo_Latitude: r["Geo_Latitude"],
-            Geo_Longitude: r["Geo_Longitude"],
-            Observacoes: obs
-        });
+        if (grouped.has(key)) {
+            // 🔥 Junta sequências da mesma coordenada
+            const existing = grouped.get(key);
+            existing.Observacoes.push(obs);
+        } else {
+            grouped.set(key, {
+                Geo_Latitude: lat,
+                Geo_Longitude: lng,
+                Observacoes: [obs]
+            });
+        }
     });
+
+    const rows = Array.from(grouped.values());
 
     if (rows.length === 0) {
         alert("Nenhum dado válido encontrado para exportação.");
@@ -289,8 +312,10 @@ function exportToCircuit() {
     }
 
     let csv = "Geo_Latitude,Geo_Longitude,Observacoes\n";
+
     rows.forEach(r => {
-        csv += `${r.Geo_Latitude},${r.Geo_Longitude},"${r.Observacoes}"\n`;
+        const mergedObservacoes = r.Observacoes.join(" | "); 
+        csv += `${r.Geo_Latitude},${r.Geo_Longitude},"${mergedObservacoes}"\n`;
     });
 
     const blob = new Blob([csv], { type: "text/csv" });
@@ -303,6 +328,7 @@ function exportToCircuit() {
 
     URL.revokeObjectURL(url);
 }
+
 
 
 // =========================
