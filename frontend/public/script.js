@@ -374,7 +374,7 @@ function exportToCircuit() {
         const obs =
             `${seqStr} - Quadra:${r.Quadra} - Lote:${r.Lote}`;
 
-        csv += `${r.Geo_Latitude},"${obs}"\n`;
+        csv += `${r.Geo_Latitude} ${r.Geo_Longitude},"${obs}"\n`;
     });
 
     const blob = new Blob([csv], { type: "text/csv" });
