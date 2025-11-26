@@ -130,19 +130,19 @@ document.getElementById("btnUpload").onclick = () => {
     document.getElementById("statCond").innerText = cond;
 
     const raw = document.getElementById("jsonOutput").innerText;
-    const parsed = JSON.parse(raw);
-
-        if (Array.isArray(parsed) && parsed.length > 0) {
-            const firstRow = parsed[0]; 
+        if (Array.isArray(raw) && raw.length > 0) {
+            const firstRow = raw[0]; 
             const firstKey = Object.keys(firstRow)[0]; 
             const firstValue = firstRow[firstKey];  
 
             document.getElementById("fileTitle").textContent = firstValue || "Arquivo carregado";
         }
-
+        
     renderTable(columns, data);
+
+};   
 }
-};
+
 
 // =========================
 // Renderização da Tabela
@@ -324,7 +324,6 @@ function exportToCircuit() {
         let quadra = "";
         let lote = "";
 
-        // ⚠️ Regex CORRIGIDO → só aceita números
         const match = normalized.match(/,\s*([0-9]+)-([0-9]+)/);
         if (match) {
             quadra = match[1];
@@ -337,10 +336,8 @@ function exportToCircuit() {
         if (grouped.has(key)) {
             const existing = grouped.get(key);
 
-            // 🔥 Adiciona sequência
             existing.Sequencias.push(seq);
 
-            // quadra/lote devem ser iguais — mantém o primeiro
         } else {
             grouped.set(key, {
                 Geo_Latitude: lat,

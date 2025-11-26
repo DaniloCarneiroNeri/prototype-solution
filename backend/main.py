@@ -61,7 +61,10 @@ def normalize_address(raw, bairro):
             "CONDOMÍNIO",
             "JARDINS LISBOA",
             "BLOCO",
-            "AP"
+            "AP",
+            "RESIDENCIAL MIAMI",
+            "EDIFÍCIO",
+            "EDIFICIO"
         ]):
             is_condominio = True
 
