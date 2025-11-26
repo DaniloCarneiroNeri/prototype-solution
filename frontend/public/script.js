@@ -163,8 +163,7 @@ function renderTable(columns, data) {
     tableHead.innerHTML = "";
     tableBody.innerHTML = "";
 
-    const hiddenCols = ["Partial_Match", "Unnamed: 0","Geo_Longitude","Stop","Latitude","Longitude","Cond_Match","AT ID"];
-
+    const hiddenCols = ["Partial_Match", "Unnamed: 0", "Geo_Longitude", "Stop", "Latitude", "Longitude", "Cond_Match"];
     const visibleCols = columns.filter(c => !hiddenCols.includes(c));
 
     // ============================================================
@@ -174,62 +173,100 @@ function renderTable(columns, data) {
         const trTitle = document.createElement("tr");
         const trFilter = document.createElement("tr");
 
+        // Colunas normais
         visibleCols.forEach(col => {
-            // título
             const th = document.createElement("th");
-            th.className = "border-b border-r px-4 py-2 text-left font-bold bg-gray-200";
+            th.className = "border-b border-r px-4 py-2 text-left font-bold bg-gray-200 dark:bg-gray-700";
             th.textContent = col;
             trTitle.appendChild(th);
 
-            // filtro
             const thF = document.createElement("th");
-            thF.className = "border-b border-r p-1 bg-gray-100";
+            thF.className = "border-b border-r p-1 bg-gray-100 dark:bg-gray-800";
 
             const inp = document.createElement("input");
             inp.type = "text";
             inp.placeholder = "Filtrar...";
-            inp.className = "w-full text-xs p-1 border rounded";
-            inp.dataset.colname = col;   // <--- essencial p/ filterTable
+            inp.className = "w-full text-xs p-1 border rounded dark:bg-gray-700 dark:border-gray-600";
+            inp.dataset.colname = col;
             inp.onkeyup = () => filterTable();
 
             thF.appendChild(inp);
             trFilter.appendChild(thF);
         });
 
+        // Coluna AÇÕES
+        const thActions = document.createElement("th");
+        thActions.className = "border-b px-4 py-2 text-center font-bold bg-gray-200 dark:bg-gray-700";
+        thActions.textContent = "Ações";
+        trTitle.appendChild(thActions);
+
+        const thFActions = document.createElement("th");
+        thFActions.className = "border-b p-1 bg-gray-100 dark:bg-gray-800";
+        trFilter.appendChild(thFActions);
+
         tableHead.appendChild(trTitle);
         tableHead.appendChild(trFilter);
     }
 
-    // ============================================================
-    // Corpo da tabela
-    // ============================================================
-    let index = 0;
+        // ============================================================
+        // Corpo da tabela
+        // ============================================================
+        data.forEach((row, rowIndex) => {
+            const tr = document.createElement("tr");
 
-    function addNext() {
-        if (index >= data.length) {
-            setTableLoading(false);
-            return;
-        }
-        addRowFixed(data[index], visibleCols);
-        index++;
-        requestAnimationFrame(addNext);
-    }
+            visibleCols.forEach(col => {
+                const td = document.createElement("td");
+                td.className = "border-t border-r px-4 py-2 dark:border-gray-700";
+                td.textContent = row[col] ?? "";
+                tr.appendChild(td);
+            });
 
-    addNext();
+            // Botão EXCLUIR
+            const tdActions = document.createElement("td");
+            tdActions.className = "border-t px-4 py-2 text-center dark:border-gray-700";
+
+            const btnDelete = document.createElement("button");
+            btnDelete.className =
+                "bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-xs shadow transition";
+
+            btnDelete.innerText = "Excluir";
+            btnDelete.onclick = () => deleteRow(rowIndex);
+
+            tdActions.appendChild(btnDelete);
+            tr.appendChild(tdActions);
+
+            tableBody.appendChild(tr);
+
+            data.forEach((row, index) => {
+                addRowFixed(row, visibleCols, index);
+            });
+        });
+
+    setTableLoading?.(false);
 }
 
-function addRowFixed(row, visibleCols) {
+function setTableLoading(isLoading) {
+    const table = document.getElementById("dataTable");
+
+    if (isLoading) {
+        table.classList.add("opacity-50");
+    } else {
+        table.classList.remove("opacity-50");
+    }
+}
+
+function addRowFixed(row, visibleCols, index) {
     const tb = document.getElementById("tableBody");
 
     const tr = document.createElement("tr");
-    tr.className = "odd:bg-white even:bg-slate-50 hover:bg-blue-50";
+    tr.className =
+        "odd:bg-white even:bg-slate-50 hover:bg-blue-50 dark:odd:bg-gray-900 dark:even:bg-gray-800 dark:hover:bg-gray-700";
 
     const unifiedValue = `${row["Geo_Latitude"] ?? ""}  ${row["Geo_Longitude"] ?? ""}`;
 
     visibleCols.forEach(col => {
         const td = document.createElement("td");
 
-        // Unifica colunas
         if (col === "Geo_Latitude" || col === "Geo_Longitude") {
             if (col !== "Geo_Latitude") return;
             col = "Geo_Lat_Lng";
@@ -240,8 +277,7 @@ function addRowFixed(row, visibleCols) {
                 ? unifiedValue
                 : (row[col] ?? "");
 
-        td.className = "border-b border-r px-4 py-2";
-
+        td.className = "border-b border-r px-4 py-2 dark:border-gray-700";
         const strValue = String(value);
 
         const isNotFound = strValue.includes("Não encontrado");
@@ -253,38 +289,30 @@ function addRowFixed(row, visibleCols) {
 
             const input = document.createElement("input");
             input.type = "text";
-            const finalValue = (isCond && col === "Geo_Lat_Lng") ? "Condomínio" : strValue;
+
+            const finalValue =
+                (isCond && col === "Geo_Lat_Lng") ? "Condomínio" : strValue;
+
             input.value = finalValue;
 
-            if (col === "Geo_Latitude" || col === "Geo_Longitude") {
-                globalData[row][col] = finalValue;
-            }
             input.className = `
                 w-full h-full px-2 py-1 outline-none
-                ${isNotFound ? "text-red-600 font-bold bg-red-50" : ""}
-                ${isPartial ? "bg-yellow-100 font-bold text-yellow-900" : ""}
-                ${isCond ? "bg-purple-100 font-bold text-purple-900" : ""}
+                ${isNotFound ? "text-red-600 font-bold bg-red-50 dark:bg-red-900 dark:text-red-300" : ""}
+                ${isPartial ? "bg-yellow-100 font-bold text-yellow-900 dark:bg-yellow-900 dark:text-yellow-200" : ""}
+                ${isCond ? "bg-purple-100 font-bold text-purple-900 dark:bg-purple-900 dark:text-purple-200" : ""}
             `.trim();
 
-            if (isPartial) {
-                input.title = "Endereço encontrado parcialmente - VERIFIQUE";
-            }
-
-            // Atualiza row ao digitar
             input.addEventListener("input", () => {
                 const clean = input.value.trim();
                 const parts = clean.split(/\s+/);
 
                 if (parts.length >= 2) {
-                    // OK — usuário informou os 2 valores
                     row["Geo_Latitude"] = parts[0];
                     row["Geo_Longitude"] = parts[1];
                 } else if (parts.length === 1) {
-                    // Só latitude digitada — NÃO apaga longitude
                     row["Geo_Latitude"] = parts[0];
                 }
 
-                // Reformatar visualmente enquanto digita
                 input.value =
                     `${row["Geo_Latitude"] ?? ""}  ${row["Geo_Longitude"] ?? ""}`;
             });
@@ -297,7 +325,43 @@ function addRowFixed(row, visibleCols) {
         tr.appendChild(td);
     });
 
+    // =======================
+    // BOTÃO EXCLUIR
+    // =======================
+    const tdActions = document.createElement("td");
+    tdActions.className = "border-b px-4 py-2 text-center dark:border-gray-700";
+
+    const btnDel = document.createElement("button");
+    btnDel.className =
+        "bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-xs shadow";
+
+    btnDel.innerText = "Excluir";
+    btnDel.onclick = () => deleteRow(index);
+
+    tdActions.appendChild(btnDel);
+    tr.appendChild(tdActions);
+
     tb.appendChild(tr);
+}
+
+function deleteRow(index) {
+    if (!confirm("Deseja realmente excluir esta linha?")) return;
+
+    globalData.splice(index, 1);
+
+    document.getElementById("statTotalLines").innerText = globalData.length;
+    document.getElementById("statNotFound").innerText =
+        globalData.filter(r => r["Geo_Latitude"] === "Não encontrado").length;
+    document.getElementById("statPartial").innerText =
+        globalData.filter(r => r["Partial_Match"] === true).length;
+    document.getElementById("statCond").innerText =
+        globalData.filter(r => r["Cond_Match"] === true).length;
+
+    renderTable(Object.keys(globalData[0] || {}), globalData);
+
+    document.getElementById("jsonOutput").innerText = JSON.stringify(globalData, null, 2);
+
+    updateTitleFromData(globalData);
 }
 
 // =========================
@@ -462,7 +526,7 @@ function closeInfoPopup() {
         );
         setIcon();
     });
-    
+
 // =========================
 // Filtro Dinâmico
 // =========================
