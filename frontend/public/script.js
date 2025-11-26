@@ -129,6 +129,17 @@ document.getElementById("btnUpload").onclick = () => {
     let cond = data.filter(r => r["Cond_Match"] === true).length;
     document.getElementById("statCond").innerText = cond;
 
+    const raw = document.getElementById("jsonOutput").innerText;
+    const parsed = JSON.parse(raw);
+
+        if (Array.isArray(parsed) && parsed.length > 0) {
+            const firstRow = parsed[0]; 
+            const firstKey = Object.keys(firstRow)[0]; 
+            const firstValue = firstRow[firstKey];  
+
+            document.getElementById("fileTitle").textContent = firstValue || "Arquivo carregado";
+        }
+
     renderTable(columns, data);
 }
 };
@@ -145,7 +156,7 @@ function renderTable(columns, data) {
     tableHead.innerHTML = "";
     tableBody.innerHTML = "";
 
-    const hiddenCols = ["Partial_Match", "Unnamed: 0","Geo_Longitude","Stop","Latitude","Longitude","Cond_Match"];
+    const hiddenCols = ["Partial_Match", "Unnamed: 0","Geo_Longitude","Stop","Latitude","Longitude","Cond_Match","AT ID"];
 
     const visibleCols = columns.filter(c => !hiddenCols.includes(c));
 
@@ -235,7 +246,9 @@ function addRowFixed(row, visibleCols) {
 
             const input = document.createElement("input");
             input.type = "text";
-            input.value = (isCond && col === "Geo_Lat_Lng") ? "Condomínio" : strValue;
+            const finalValue = (isCond && col === "Geo_Lat_Lng") ? "Condomínio" : strValue;
+            input.value = finalValue;
+            globalData[row][col] = finalValue;
 
             input.className = `
                 w-full h-full px-2 py-1 outline-none
@@ -369,8 +382,10 @@ function exportToCircuit() {
     URL.revokeObjectURL(url);
 }
 
-
-
+document.getElementById("fileInput").addEventListener("change", function () {
+    const fileName = document.getElementById("fileName");
+    fileName.textContent = this.files.length ? this.files[0].name : "Nenhum arquivo escolhido";
+});
 
 // =========================
 // Popup
@@ -424,14 +439,23 @@ window.filterTable = function () {
         let tds = row.getElementsByTagName("td");
 
         for (let i = 0; i < filters.length; i++) {
-            if (filters[i] && tds[i]) {
-                const txt = tds[i].textContent.toUpperCase();
-                if (!txt.includes(filters[i])) {
-                    show = false;
-                    break;
-                }
+            if (!filters[i] || !tds[i]) continue;
+
+            let cellValue = "";
+
+            const inp = tds[i].querySelector("input");
+            if (inp) {
+                cellValue = inp.value.toUpperCase();
+            } else {
+                cellValue = tds[i].textContent.toUpperCase();
+            }
+
+            if (!cellValue.includes(filters[i])) {
+                show = false;
+                break;
             }
         }
+
         row.style.display = show ? "" : "none";
     }
 };

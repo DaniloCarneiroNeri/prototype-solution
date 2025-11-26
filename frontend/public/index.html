@@ -30,14 +30,28 @@
 
       <!-- UPLOAD -->
       <div class="mb-6">
-        <label class="block text-gray-800 mb-2 font-semibold">Selecione um arquivo .xlsx</label>
-        <div class="flex gap-4">
-            <input id="fileInput" type="file" accept=".xlsx"
-                   class="flex-1 border p-3 rounded-lg cursor-pointer hover:border-gray-400">
-            <button id="btnUpload"
-                    class="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 transition shadow-md">
-                Enviar
-            </button>
+            <label id="fileTitle" class="block text-gray-800 mb-2 font-semibold">
+                Selecione um arquivo .xlsx
+            </label>
+
+            <div class="flex gap-4">
+
+                <input id="fileInput" type="file" accept=".xlsx" class="hidden">
+
+                <label for="fileInput"
+                    class="bg-gray-200 border border-gray-400 px-4 py-3 rounded-lg cursor-pointer hover:bg-gray-300 transition">
+                    Importar arquivo
+                </label>
+
+                <span id="fileName" class="text-gray-600 mt-auto mb-auto">
+                    Nenhum arquivo escolhido
+                </span>
+
+                <button id="btnUpload"
+                        class="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 transition shadow-md">
+                    Enviar
+                </button>
+            </div>
         </div>
 
         <div id="progressContainer" class="mt-4 hidden">
@@ -182,7 +196,7 @@
 <footer onclick="openInfoPopup()" 
         class="bg-gray-200 text-gray-700 text-center py-4 mt-8 border-t cursor-pointer hover:bg-gray-300 transition">
     <p class="text-sm tracking-wide">
-        Desenvolvido por <span class="font-semibold underline">Danilo Carneiro</span>
+        Developed by <span class="font-semibold underline">Danilo Carneiro</span>
     </p>
 </footer>
 

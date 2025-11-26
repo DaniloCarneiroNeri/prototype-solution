@@ -59,7 +59,9 @@ def normalize_address(raw, bairro):
             "COND",
             "CONDOMINIO",
             "CONDOMÍNIO",
-            "JARDINS LISBOA"
+            "JARDINS LISBOA",
+            "BLOCO",
+            "AP"
         ]):
             is_condominio = True
 
@@ -446,7 +448,7 @@ async def upload_file(file: UploadFile = File(...)):
             final_lng.append(lng2)
             partial_flags.append(False)
             continue
-        
+
         # -------------------------------
         # Trativa com cidade (com Bairro) (sem cep)
         # -------------------------------
