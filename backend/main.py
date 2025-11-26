@@ -191,27 +191,21 @@ def normalize_address(raw, bairro):
         q_match = re.search(
             r"""
             \b
-            Q
-            (?:        
-                U?A?D?R?A?       
-                |UA             
-                |S               
-                |UANDRA          
-            )?
+            Q(?:U?A?D?R?A?)? 
             \.?
             \s*[:,.\- ]?\s*
-            ([A-Z]?\d{1,3}[A-Z]?)
+            ([A-Z]?\d{1,3}[A-Z]?) 
+            (?=\s*(?:L|LT|LOTE|L\.|\d|$))
             """,
             text_upper,
             flags=re.VERBOSE
         )
-
-        # LOTE: aceitar L, LT, LOTE, Lt01, lote8, L01, com/sem ponto
+        
+        # LOTE:
         l_match = re.search(
             r"""
             \b
-            L
-            (?:T|TE|OTE)?   # LT, LTE, LOTE
+            L(?:T|TE|OTE)? 
             \.?
             \s*[:,.\- ]?\s*
             ([A-Z]?\d{1,3}[A-Z]?)
