@@ -366,7 +366,7 @@ async def geocode_with_here(address: str):
         except Exception as e:
             print("HERE Exception:", e)
 
-    return None, None, None
+    return None, None, None, None
 
 async def retry_geocode_with_zero_variants(normalized: str,
                                            geocode_fn,
@@ -534,7 +534,7 @@ async def upload_file(file: UploadFile = File(...)):
         # -------------------------------
         cidade = "Goiania, Goiânia - GO"
         second_query = f"{normalized}, {bairro}, {cidade}"
-        lat2, lng2, cep_here2 = await geocode_with_here(second_query)
+        lat2, lng2, cep_here2, street2 = await geocode_with_here(second_query)
 
         if lat2:
             final_lat.append(lat2)
@@ -546,7 +546,7 @@ async def upload_file(file: UploadFile = File(...)):
         # tentativa (com Bairro)
         # -------------------------------
         second_query = f"{normalized}, {bairro}"
-        lat2, lng2, cep_here2 = await geocode_with_here(second_query)
+        lat2, lng2, cep_here2, street2 = await geocode_with_here(second_query)
 
         match_ok2 = cep_here2 and cep_here2.replace("-", "") == cep_original.replace("-", "")
 
@@ -568,7 +568,7 @@ async def upload_file(file: UploadFile = File(...)):
 
         if bairro_upper in BAIRROS_RETRY:
             third_query = f"{normalized}, Novo Horizonte"
-            lat3, lng3, cep_here3 = await geocode_with_here(third_query)
+            lat3, lng3, cep_here3, street3 = await geocode_with_here(third_query)
 
             match_ok3 = cep_here3 and cep_here3.replace("-", "") == cep_original.replace("-", "")
 
@@ -598,7 +598,7 @@ async def upload_file(file: UploadFile = File(...)):
                     continue
 
                 tentativa = f"{base}, {quadra_num}-{novo_lote}"
-                latp, lngp, cep_part = await geocode_with_here(tentativa)
+                latp, lngp, cep_part, street_part = await geocode_with_here(tentativa)
 
                 match_okp = cep_part and cep_part.replace("-", "") == cep_original.replace("-", "")
 
