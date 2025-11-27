@@ -358,13 +358,106 @@ async def geocode_with_here(address: str):
                     if "postalCode" in address_info:
                         postal = address_info["postalCode"]
 
-                    return lat, lng, postal
+                    if "street" in address_info:
+                        street = address_info["street"]
+
+                    return lat, lng, postal,street
 
         except Exception as e:
             print("HERE Exception:", e)
 
     return None, None, None
 
+async def retry_geocode_with_zero_variants(normalized: str,
+                                           geocode_fn,
+                                           first_lat,
+                                           first_lng,
+                                           first_cep,
+                                           first_street):
+    """
+    Faz nova tentativa de geocodificação para ruas do padrão:
+    RUA XX-000  ↔  RUA XX-00  ↔  RUA XX-0  ↔  RUA XX-X
+    sem alterar a lógica principal.
+    """
+
+    # -----------------------------
+    # 1. Função para extrair somente a rua, ignorando quadra/lote
+    # -----------------------------
+    def extract_street_base(addr: str) -> str:
+        up = addr.upper()
+        cut = len(up)
+        for token in [" Q", " QUADRA", " LT", " LOTE", ","]:
+            pos = up.find(token)
+            if pos != -1:
+                cut = min(cut, pos)
+        return addr[:cut].strip()
+
+    # Rua base do normalized (sem quadra/lote)
+    street_base = extract_street_base(normalized)
+
+    # Se a rua não está no formato RUA XX-000, apenas devolve o original
+    m = re.search(r"\bRUA\s+([A-Z]{1,3})-(\d+)\b", street_base.upper())
+    if not m:
+        return first_lat, first_lng, first_cep, first_street
+
+    prefix = m.group(1)           # AC / RI / BL / MDV / etc
+    num    = m.group(2)           # 1, 01, 001, 0001, etc
+    num_raw = num.lstrip("0") or "0"
+
+    # -----------------------------
+    # 2. Gerar variações possíveis do mesmo código
+    # -----------------------------
+    variants = set()
+
+    # Forma original
+    variants.add(f"RUA {prefix}-{num}")
+
+    # Sem zeros
+    variants.add(f"RUA {prefix}-{num_raw}")
+
+    # Com 2 zeros
+    variants.add(f"RUA {prefix}-{num_raw.zfill(2)}")
+
+    # Com 3 zeros (padrão original AC/W/RI)
+    variants.add(f"RUA {prefix}-{num_raw.zfill(3)}")
+
+    # -----------------------------
+    # 3. Para cada variação, reconstruir normalized
+    # -----------------------------
+    normalized_upper = normalized.upper()
+
+    results_to_try = []
+    for var in variants:
+        candidate = re.sub(
+            r"\bRUA\s+" + prefix + r"-\d+\b",
+            var,
+            normalized_upper,
+            flags=re.IGNORECASE
+        )
+        results_to_try.append(candidate)
+
+    # -----------------------------
+    # 4. Testar cada variação
+    # -----------------------------
+    for candidate in results_to_try:
+
+        lat2, lng2, cep2, street2 = await geocode_fn(candidate)
+
+        if not street2:
+            continue
+
+        street2_base = extract_street_base(street2).upper()
+        street_base_up = street_base.upper()
+
+        # -----------------------------
+        # Critério de aceitação:
+        # A rua da API deve começar com a rua base do normalized
+        # -----------------------------
+        if street2_base.startswith(street_base_up):
+            return lat2, lng2, cep2, street2
+
+    # Se nenhuma variação funcionou, retornar o primeiro resultado
+    return first_lat, first_lng, first_cep, first_street
 
 # ============================================================
 # ENDPOINT /upload
@@ -423,7 +516,10 @@ async def upload_file(file: UploadFile = File(...)):
             partial_flags.append(False)
             continue
         
-        lat, lng, cep_here = await geocode_with_here(normalized)
+        lat, lng, cep_here, street = await geocode_with_here(normalized)
+
+        #Tentativa para Ruas que existem no padrão RUA XX-00 / RUA XX-000
+        lat, lng, cep_here, street = await retry_geocode_with_zero_variants(normalized,geocode_with_here,lat, lng, cep_here, street)
 
         match_ok = cep_here and cep_here.replace("-", "") == cep_original.replace("-", "")
 
