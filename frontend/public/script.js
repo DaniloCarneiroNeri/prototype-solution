@@ -374,7 +374,7 @@ function exportToCircuit() {
         const obs =
             `${seqStr} - Quadra:${r.Quadra} - Lote:${r.Lote}`;
 
-        csv += `${r.Geo_Latitude} ${r.Geo_Longitude},"${obs}"\n`;
+        csv += `${r.Geo_Latitude}, ${r.Geo_Longitude},"${obs}"\n`;
     });
 
     const blob = new Blob([csv], { type: "text/csv" });
@@ -413,6 +413,18 @@ document.getElementById("popupExportCircuit").onclick = () => {
     closePopup();
     exportToCircuit();
 };
+
+function openHelpPopup() {
+    const popup = document.getElementById("helpPopup");
+    popup.classList.remove("hidden");
+    popup.classList.add("flex");
+}
+
+function closeHelpPopup() {
+    const popup = document.getElementById("helpPopup");
+    popup.classList.add("hidden");
+    popup.classList.remove("flex");
+}
 
 function openInfoPopup() {
     const popup = document.getElementById("infoPopup");

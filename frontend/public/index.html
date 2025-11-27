@@ -35,13 +35,27 @@
             <h1 class="text-2xl font-bold tracking-wide">Route Planner</h1>
         </div>
 
-        <!-- BOTÃO DARK MODE -->
-        <button id="toggleTheme"
-                class="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition">
-            <svg id="themeIcon" xmlns="http://www.w3.org/2000/svg"
-                class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            </svg>
-        </button>
+        <div class="flex items-center gap-3">
+
+            <!-- BOTÃO DE AJUDA -->
+            <button id="helpButton" onclick="openHelpPopup()"
+                    class="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition">
+                <svg xmlns="http://www.w3.org/2000/svg"
+                    class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M8 10a4 4 0 118 0c0 1.657-1.333 3-3 3h-1v1m0 4h.01" />
+                </svg>
+            </button>
+
+            <!-- BOTÃO DARK MODE -->
+            <button id="toggleTheme"
+                    class="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition">
+                <svg id="themeIcon" xmlns="http://www.w3.org/2000/svg"
+                    class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                </svg>
+            </button>
+
+        </div>
 
     </header>
 
@@ -246,6 +260,171 @@
             </button>
         </div>
     </div>
+
+    <!-- POPUP DE AJUDA -->
+    <div id="helpPopup"
+        class="fixed inset-0 bg-black/50 dark:bg-black/60 backdrop-blur-lg hidden items-center justify-center z-[9999] transition-all">
+
+        <div class="bg-white dark:bg-gray-900 p-8 rounded-2xl shadow-2xl w-[45rem] max-h-[90vh] overflow-y-auto border border-gray-300 dark:border-gray-700 relative">
+
+            <!-- FECHAR -->
+            <button onclick="closeHelpPopup()"
+                class="absolute top-4 right-4 text-gray-500 hover:text-gray-300 text-2xl font-bold">
+                ×
+            </button>
+
+            <!-- TÍTULO + LOGO -->
+            <div class="flex items-center gap-3 mb-6">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-12 h-12 text-blue-700 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M9 20l-5.447-2.724A2 2 0 013 15.382V6a2 2 0 012-2h1m5 0h1a2 2 0 012 2v7.382a2 2 0 01-1.553 1.894L9 20zm0 0h6" />
+                </svg>
+
+                <h2 class="text-2xl font-bold text-gray-800 dark:text-gray-100 tracking-wide">
+                    Detalhes de funcionamento do sistema:
+                </h2>
+            </div>
+
+            <!-- TEXTO -->
+            <div class="space-y-6 text-gray-700 dark:text-gray-300 text-[0.95rem] leading-relaxed">
+
+                <!-- BLOCO 1: IMPORTAÇÃO -->
+                <p>
+                    Clique no botão <b>Importar arquivo</b> e selecione o arquivo disponibilizado pela Shopee.
+                    <br><br>
+                    Após escolher o arquivo, clique no botão <b>Enviar</b>.
+                </p>
+
+                <!-- ALERTA WARNING -->
+                <div class="flex gap-3 bg-yellow-100 dark:bg-yellow-900 border-l-4 border-yellow-500 p-4 rounded-md shadow-sm">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-yellow-600 dark:text-yellow-300 mt-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L4.206 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <div>
+                        <p class="font-semibold text-yellow-700 dark:text-yellow-200">Atenção</p>
+                        <p>
+                            O envio de arquivos não autorizados pode causar falhas no sistema.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- BLOCO 2: ERRO AO PROCESSAR -->
+                <p>
+                    <b>Observação:</b> caso o sistema apresente a mensagem <b>"erro ao processar"</b>,
+                    abra o endereço:
+                    <br>
+                    <a href="https://prototype-solution.onrender.com/" target="_blank"
+                    class="text-blue-600 dark:text-blue-400 underline">
+                        https://prototype-solution.onrender.com/
+                    </a>
+                    <br><br>
+                    Certifique-se de que aparece a mensagem:
+                    <span class="italic">{"status":"ok","message":"Backend online"}</span>.
+                    <br><br>
+                    Se aparecer apenas a página de carregamento do Render, aguarde alguns instantes.
+                    <br><br>
+                    Para casos específicos, entre em contato com o desenvolvedor responsável.
+                </p>
+
+                <!-- BLOCO 3: VARREDURA -->
+                <p>
+                    Ao enviar o arquivo, o sistema fará uma varredura completa, analisando os endereços informados
+                    e realizando cruzamento de dados para localizar a posição correta.
+                </p>
+
+                <!-- BLOCO 4: COLUNAS GERADAS -->
+                <p>
+                    O sistema cria duas colunas principais:
+                    <br>
+                    <b>Normalized_Address</b>: padronização do endereço.
+                    <br>
+                    <b>Geo_Latitude</b>: coluna base contendo latitude e longitude retornadas após a análise.
+                </p>
+
+                <p><b>A coluna <span class="text-blue-700 dark:text-blue-300">Geo_Latitude</span> é a mais importante.</b></p>
+
+                <!-- CONDOMÍNIO -->
+                <div>
+                    <p class="font-semibold">Informação retornada: <span class="bg-purple-100 text-purple-900 dark:bg-purple-900 dark:text-purple-200 font-bold px-2 py-1 rounded">Condomínio</span></p>
+                    <p>
+                        Endereços identificados como condomínio são exibidos nesse formato.
+                    </p>
+                </div>
+
+                <!-- PARTIAL -->
+                <div>
+                    <p class="font-semibold">Informação retornada: 
+                        <span class="bg-yellow-100 text-yellow-900 dark:bg-yellow-900 dark:text-yellow-200 font-bold px-2 py-1 rounded">
+                            Latitude e Longitude (match parcial)
+                        </span>
+                    </p>
+
+                    <p>
+                        Significa que o endereço foi encontrado parcialmente, podendo indicar:
+                    </p>
+                    <ul class="list-disc ml-6">
+                        <li>Local próximo ao endereço original</li>
+                        <li>CEP divergente</li>
+                        <li>Endereço incorreto no arquivo</li>
+                    </ul>
+
+                    <div class="flex gap-3 bg-yellow-100 dark:bg-yellow-900 border-l-4 border-yellow-500 p-4 rounded-md shadow-sm mt-3">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-yellow-600 dark:text-yellow-300 mt-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L4.206 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        <div>
+                            <p class="font-semibold text-yellow-700 dark:text-yellow-200">Atenção</p>
+                            <p>
+                                O sistema é um facilitador. Os endereços retornados devem ser
+                                validados antes de incluir no Circuit.
+                                <br>
+                                (Campos editáveis estão disponíveis para ajuste manual).
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- NOT FOUND -->
+                <div>
+                    <p class="font-semibold">Informação retornada: 
+                        <span class="text-red-600 font-bold bg-red-50 dark:bg-red-900 dark:text-red-300 px-2 py-1 rounded">
+                            Não encontrado
+                        </span>
+                    </p>
+
+                    <p>
+                        Significa que o endereço não foi encontrado com base nas informações fornecidas.
+                        (Campo torna-se editável para ajuste manual).
+                    </p>
+                </div>
+
+                <!-- EXPORTAÇÃO -->
+                <div>
+                    <p class="font-semibold text-lg">Botão Exportar:</p>
+                    <ul class="list-disc ml-6">
+                        <li><b>Exportar Excel</b>: exporta todos os dados da planilha + colunas criadas pelo sistema.</li>
+                        <li><b>Exportar para Circuit</b>: exporta apenas os dados relevantes para montagem de rota no aplicativo Circuit.</li>
+                    </ul>
+
+                    <p class="mt-2">
+                        Uma coluna adicional chamada <b>Observações</b> é criada contendo:
+                        sequência do pacote + quadra e lote.
+                    </p>
+                </div>
+
+                <!-- FOOTER -->
+                <p>
+                    <b>Rodapé:</b> Ao clicar em <i>"Developed by Danilo Carneiro"</i> você terá acesso ao contato do
+                    desenvolvedor responsável. Entre em contato para suporte ou esclarecimentos.
+                </p>
+
+            </div>
+
+        </div>
+    </div>
+
 
     <footer onclick="openInfoPopup()" 
             class="bg-gray-200 dark:bg-gray-900 text-gray-700 dark:text-gray-300 text-center py-4 mt-8 border-t cursor-pointer hover:bg-gray-300 dark:hover:bg-gray-800 transition relative z-30">
