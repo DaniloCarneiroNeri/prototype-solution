@@ -368,6 +368,15 @@ async def geocode_with_here(address: str):
 
     return None, None, None, None
 
+def extract_street_base(addr: str) -> str:
+    up = addr.upper()
+    cut = len(up)
+    for token in [" Q", " QUADRA", " LT", " LOTE", ","]:
+        pos = up.find(token)
+        if pos != -1:
+            cut = min(cut, pos)
+    return addr[:cut].strip()
+
 async def retry_geocode_with_zero_variants(normalized: str,
                                            geocode_fn,
                                            first_lat,
@@ -521,7 +530,16 @@ async def upload_file(file: UploadFile = File(...)):
         #Tentativa para Ruas que existem no padrão RUA XX-00 / RUA XX-000
         lat, lng, cep_here, street = await retry_geocode_with_zero_variants(normalized,geocode_with_here,lat, lng, cep_here, street)
 
-        match_ok = cep_here and cep_here.replace("-", "") == cep_original.replace("-", "")
+        street_base_normalized = extract_street_base(normalized).upper()
+        street_base_api = extract_street_base(street or "").upper()
+
+        match_ok = (
+            cep_here
+            and cep_here.replace("-", "") == cep_original.replace("-", "")
+        ) or (
+            street_base_normalized
+            and street_base_api.startswith(street_base_normalized)
+        )
 
         if match_ok:
             final_lat.append(lat)
@@ -548,8 +566,17 @@ async def upload_file(file: UploadFile = File(...)):
         second_query = f"{normalized}, {bairro}"
         lat2, lng2, cep_here2, street2 = await geocode_with_here(second_query)
 
-        match_ok2 = cep_here2 and cep_here2.replace("-", "") == cep_original.replace("-", "")
+        street_base_normalized = extract_street_base(normalized).upper()
+        street_base_api = extract_street_base(street2 or "").upper()
 
+        match_ok2 = (
+            cep_here2
+            and cep_here2.replace("-", "") == cep_original.replace("-", "")
+        ) or (
+            street_base_normalized
+            and street_base_api.startswith(street_base_normalized)
+        )
+        
         if match_ok2:
             final_lat.append(lat2)
             final_lng.append(lng2)
@@ -570,8 +597,16 @@ async def upload_file(file: UploadFile = File(...)):
             third_query = f"{normalized}, Novo Horizonte"
             lat3, lng3, cep_here3, street3 = await geocode_with_here(third_query)
 
-            match_ok3 = cep_here3 and cep_here3.replace("-", "") == cep_original.replace("-", "")
+            street_base_normalized = extract_street_base(normalized).upper()
+            street_base_api = extract_street_base(street3 or "").upper()
 
+            match_ok3 = (
+                cep_here3
+                and cep_here3.replace("-", "") == cep_original.replace("-", "")
+            ) or (
+                street_base_normalized
+                and street_base_api.startswith(street_base_normalized)
+            )
             if match_ok3:
                 final_lat.append(lat3)
                 final_lng.append(lng3)
@@ -600,8 +635,16 @@ async def upload_file(file: UploadFile = File(...)):
                 tentativa = f"{base}, {quadra_num}-{novo_lote}"
                 latp, lngp, cep_part, street_part = await geocode_with_here(tentativa)
 
-                match_okp = cep_part and cep_part.replace("-", "") == cep_original.replace("-", "")
+                street_base_normalized = extract_street_base(normalized).upper()
+                street_base_api = extract_street_base(street_part or "").upper()
 
+                match_okp = (
+                    cep_part
+                    and cep_part.replace("-", "") == cep_original.replace("-", "")
+                ) or (
+                    street_base_normalized
+                    and street_base_api.startswith(street_base_normalized)
+                )
                 if match_okp:
                     final_lat.append(latp)
                     final_lng.append(lngp)
