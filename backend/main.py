@@ -330,10 +330,10 @@ async def geocode_with_here(address: str):
 
                     postal = None
                     address_info = item.get("address", {})
-                    if "street" in address_info:
-                        street = address_info["street"]
+                    if "postalCode" in address_info:
+                        postal = address_info["postalCode"]
 
-                    return lat, lng, street
+                    return lat, lng, postal
 
         except Exception as e:
             print("HERE Exception:", e)
@@ -398,9 +398,9 @@ async def upload_file(file: UploadFile = File(...)):
             partial_flags.append(False)
             continue
         
-        lat, lng, street = await geocode_with_here(normalized)
+        lat, lng, cep_here = await geocode_with_here(normalized)
 
-        match_ok = street and normalized.upper().startswith(street.upper())
+        match_ok = cep_here and cep_here.replace("-", "") == cep_original.replace("-", "")
 
         if match_ok:
             final_lat.append(lat)
@@ -412,9 +412,9 @@ async def upload_file(file: UploadFile = File(...)):
         # tentativa (com Bairro)
         # -------------------------------
         second_query = f"{normalized}, {bairro}"
-        lat2, lng2, street2 = await geocode_with_here(second_query)
+        lat2, lng2, cep_here2 = await geocode_with_here(second_query)
 
-        match_ok2 = street2 and normalized.upper().startswith(street2.upper())
+        match_ok2 = cep_here2 and cep_here2.replace("-", "") == cep_original.replace("-", "")
 
         if match_ok2:
             final_lat.append(lat2)
@@ -427,7 +427,7 @@ async def upload_file(file: UploadFile = File(...)):
         # -------------------------------
         cidade = "Goiania, Goiânia - GO"
         second_query = f"{normalized}, {bairro}, {cidade}"
-        lat2, lng2, street2 = await geocode_with_here(second_query)
+        lat2, lng2, cep_here2 = await geocode_with_here(second_query)
 
         if lat2:
             final_lat.append(lat2)
@@ -447,9 +447,9 @@ async def upload_file(file: UploadFile = File(...)):
 
         if bairro_upper in BAIRROS_RETRY:
             third_query = f"{normalized}, Novo Horizonte"
-            lat3, lng3, street3 = await geocode_with_here(third_query)
+            lat3, lng3, cep_here3 = await geocode_with_here(third_query)
 
-            match_ok3 = street3 and normalized.upper().startswith(street3.upper())
+            match_ok3 = cep_here3 and cep_here3.replace("-", "") == cep_original.replace("-", "")
 
             if match_ok3:
                 final_lat.append(lat3)
@@ -477,9 +477,9 @@ async def upload_file(file: UploadFile = File(...)):
                     continue
 
                 tentativa = f"{base}, {quadra_num}-{novo_lote}"
-                latp, lngp, street_part = await geocode_with_here(tentativa)
+                latp, lngp, cep_part = await geocode_with_here(tentativa)
 
-                match_okp = street_part and normalized.upper().startswith(street_part.upper())
+                match_okp = cep_part and cep_part.replace("-", "") == cep_original.replace("-", "")
 
                 if match_okp:
                     final_lat.append(latp)
