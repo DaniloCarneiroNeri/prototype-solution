@@ -98,9 +98,34 @@ def normalize_address(raw, bairro):
         text = re.sub(r"(^|\s)R\s+(?=[A-Z])", r"\1RUA ", text, flags=re.IGNORECASE)
         text_upper = text.upper()
 
-        # Captura "RUA AC3", "RUA AC 3", "RUA RI 15", etc. (mantido, mas robusto)
+
+        # ============================================================
+        # REGRA ESPECIAL — RUA MDV-x  (SEM ZERO-PAD)
+        # ============================================================
+        rua_mdv = re.search(
+            r"\bRUA\s+MDV\s*[- ]?\s*(\d{1,3})\b",
+            text_upper
+        )
+
+        if rua_mdv:
+            numero = rua_mdv.group(1).lstrip("0") or "0"
+            novo_padrao = f"RUA MDV-{numero}"
+
+            text = re.sub(
+                r"\bRUA\s+MDV\s*[- ]?\s*\d{1,3}\b",
+                novo_padrao,
+                text,
+                flags=re.IGNORECASE
+            )
+            text_upper = text.upper()
+
+
+        # ============================================================
+        # Captura “RUA AC3”, “RUA AC 3”, “RUA RI 15”, etc.
+        # *** EXCLUINDO MDV ***
+        # ============================================================
         rua_codigo = re.search(
-            r"\bRUA\s+([A-Z]{1,3})\s*[- ]?\s*(\d{1,3})\b",
+            r"\bRUA\s+(?!MDV)([A-Z]{1,3})\s*[- ]?\s*(\d{1,3})\b",
             text_upper
         )
 
@@ -110,7 +135,7 @@ def normalize_address(raw, bairro):
             novo_padrao = f"RUA {codigo}-{numero}"
 
             text = re.sub(
-                r"\bRUA\s+[A-Z]{1,3}\s*[- ]?\s*\d{1,3}\b",
+                r"\bRUA\s+(?!MDV)[A-Z]{1,3}\s*[- ]?\s*\d{1,3}\b",
                 novo_padrao,
                 text,
                 flags=re.IGNORECASE
