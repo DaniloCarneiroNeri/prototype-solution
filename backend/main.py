@@ -530,6 +530,19 @@ async def upload_file(file: UploadFile = File(...)):
             continue
 
         # -------------------------------
+        # Trativa com cidade (com Bairro) (sem cep)
+        # -------------------------------
+        cidade = "Goiania, Goiânia - GO"
+        second_query = f"{normalized}, {bairro}, {cidade}"
+        lat2, lng2, cep_here2 = await geocode_with_here(second_query)
+
+        if lat2:
+            final_lat.append(lat2)
+            final_lng.append(lng2)
+            partial_flags.append(True)
+            continue
+
+        # -------------------------------
         # tentativa (com Bairro)
         # -------------------------------
         second_query = f"{normalized}, {bairro}"
@@ -541,19 +554,6 @@ async def upload_file(file: UploadFile = File(...)):
             final_lat.append(lat2)
             final_lng.append(lng2)
             partial_flags.append(False)
-            continue
-
-        # -------------------------------
-        # Trativa com cidade (com Bairro) (sem cep)
-        # -------------------------------
-        cidade = "Goiania, Goiânia - GO"
-        second_query = f"{normalized}, {bairro}, {cidade}"
-        lat2, lng2, cep_here2 = await geocode_with_here(second_query)
-
-        if lat2:
-            final_lat.append(lat2)
-            final_lng.append(lng2)
-            partial_flags.append(True)
             continue
 
         # -----------------------------------------------
