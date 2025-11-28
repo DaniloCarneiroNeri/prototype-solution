@@ -24,6 +24,7 @@ services:
       PYTHONUNBUFFERED: 1
       HERE_API_KEY: "${HERE_API_KEY}"
       GOOGLE_API_KEY: "${GOOGLE_API_KEY}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY}"
     networks:
       - app-network
 
