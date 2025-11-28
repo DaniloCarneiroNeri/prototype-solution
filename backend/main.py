@@ -24,41 +24,64 @@ app.add_middleware(
 )
 
 HERE_API_KEY = os.getenv("HERE_API_KEY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") # Opcional: Para parser inteligente
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 # ============================================================
-# INTEGRAÇÃO IA (OPENAI) - Parser Inteligente
+# INTEGRAÇÃO IA (GEMINI - CORREÇÃO DE MODELOS)
 # ============================================================
 async def parse_address_with_ai(raw_text: str) -> Dict[str, str]:
     """
-    Usa IA para estruturar endereços difíceis que o Regex pode perder.
-    Requer OPENAI_API_KEY. Retorna dict com componentes.
+    Tenta estruturar o endereço.
+    Atualizado para tentar modelos estáveis se os experimentais falharem.
     """
-    if not OPENAI_API_KEY:
+    if not GOOGLE_API_KEY:
         return None
 
     try:
-        from openai import AsyncOpenAI
-        client = AsyncOpenAI(api_key=OPENAI_API_KEY)
-
+        import google.generativeai as genai
+        genai.configure(api_key=GOOGLE_API_KEY)
+        
+        # Lista atualizada de modelos (do mais novo para o mais antigo/estável)
+        models_to_try = [
+            'gemini-1.5-flash', 
+            'gemini-1.5-flash-latest', 
+            'gemini-1.5-pro',
+            'gemini-1.0-pro', 
+            'gemini-pro'
+        ]
+        
         prompt = (
-            f"Extraia o endereço do texto abaixo para formato JSON com chaves: "
-            f"rua, quadra, lote, bairro, numero (se houver). "
-            f"O contexto é Goiânia, Brasil. Padronize 'RUA T 63' para 'Rua T-63'. "
+            f"Extraia o endereço do texto para JSON (chaves: rua, quadra, lote, bairro). "
+            f"Ignore números como '0' ou '00' se houver quadra/lote. "
+            f"Exemplo: 'Rua RC 18 Q23 Lt01' -> rua='Rua RC 18', quadra='23', lote='1'. "
             f"Texto: '{raw_text}'"
         )
 
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini", # Modelo rápido e barato
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-            temperature=0
-        )
-        
-        content = response.choices[0].message.content
-        return json.loads(content)
+        for model_name in models_to_try:
+            try:
+                model = genai.GenerativeModel(model_name)
+                # Executa em thread separada
+                response = await asyncio.to_thread(model.generate_content, prompt)
+                
+                text_resp = response.text
+                # Limpeza robusta do JSON
+                json_str = text_resp.replace("```json", "").replace("```", "").strip()
+                if not json_str.startswith("{"):
+                    # Tenta achar o primeiro {
+                    idx = json_str.find("{")
+                    if idx != -1: json_str = json_str[idx:]
+                    
+                data = json.loads(json_str)
+                return data
+            except Exception as e:
+                # Silencia erro e tenta o próximo modelo
+                continue
+                
+        return None
+
     except Exception as e:
-        print(f"Erro IA: {e}")
+        print(f"Erro Crítico IA: {e}")
         return None
 
 # ============================================================
@@ -437,7 +460,7 @@ async def find_best_location(normalized_addr: str, original_cep: str, bairro: st
     # 1. Tentar parse via IA se disponível (muito útil para endereços bagunçados)
     # Se você configurar a OPENAI_KEY, descomente a lógica abaixo
     ai_parsed = None
-    if OPENAI_API_KEY:
+    if GOOGLE_API_KEY:
          ai_parsed = await parse_address_with_ai(original_raw)
          if ai_parsed and ai_parsed.get('rua'):
              # Tenta montar um endereço limpo com a IA
