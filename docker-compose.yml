@@ -23,6 +23,7 @@ services:
     environment:
       PYTHONUNBUFFERED: 1
       HERE_API_KEY: "${HERE_API_KEY}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY}"
     networks:
       - app-network
 

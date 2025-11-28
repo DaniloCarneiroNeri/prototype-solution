@@ -162,23 +162,21 @@ def normalize_address(raw, bairro):
             )
             text_upper = text.upper()
 
-        # RC — tornar captura robusta: captura mesmo se seguido por letra/pontuação
-        rc_search = re.search(r"(\b(?:RUA|R)\s+RC\s*[- ]?\s*)(\d{1,3})", text_upper, flags=0)
-        if rc_search:
-            rc_num = rc_search.group(2).lstrip("0") or "0"
-            def _rc_sub(m):
-                prefix = m.group(1)
-                return f"{prefix}{rc_num}"
-
-            text = re.sub(r"(\b(?:RUA|R)\s+RC\s*[- ]?\s*)(\d{1,3})", lambda m: _rc_sub(m), text, flags=re.IGNORECASE)
+        # RC — tornar captura robusta e aplicar zero-pad de 3 dígitos
+        rc = re.search(r"\b(?:RUA|R)\s+RC\s*[- ]?\s*(\d{1,3})\b", text_upper)
+        if rc:
+            numero = rc.group(1).lstrip("0") or "0"
+            numero = numero.zfill(3)  # aplicar zero-pad para RC também
+            novo_padrao = f"RUA RC-{numero}"
 
             text = re.sub(
-                r"(\b(?:RUA|R)\s+RC\s*[- ]?\s*)(\d{1,3})",
-                lambda m: f"RUA RC-{rc_num}",
+                r"\b(?:RUA|R)\s+RC\s*[- ]?\s*\d{1,3}\b",
+                novo_padrao,
                 text,
                 flags=re.IGNORECASE
             )
             text_upper = text.upper()
+
 
         # ------------------------------- (mantido)
         # Regra nova: converter "Rua <numero>" para extenso (mantido)
@@ -368,6 +366,53 @@ async def geocode_with_here(address: str):
 
     return None, None, None, None
 
+
+
+import openai
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
+async def ai_extract_address(text: str) -> Optional[str]:
+    """
+    Extract address using OpenAI (gpt-4o-mini). Returns reconstructed normalized address
+    or None if not confident.
+    """
+    if not text or len(str(text).strip()) < 4:
+        return None
+
+    prompt = f"""Extract address components for Goiânia-GO from the text below and return a JSON object with keys:
+rua, quadra, lote, bairro, cidade, estado, cep.
+If unknown, use empty string. Ensure 'rua' follows normalized patterns like 'RUA RC-014' or 'RUA MDV-13' where MDV has no zero-pad.
+Text: {text}
+"""
+
+    try:
+        response = await openai.ChatCompletion.acreate(
+            model="gpt-4o-mini",
+            messages=[{"role":"user","content":prompt}],
+            temperature=0
+        )
+        content = response["choices"][0]["message"]["content"]
+        # extract JSON
+        import json as _json
+        start = content.find("{")
+        end = content.rfind("}") + 1
+        if start == -1 or end == -1:
+            return None
+        obj = _json.loads(content[start:end])
+
+        rua = (obj.get("rua") or "").strip()
+        quadra = (obj.get("quadra") or "").strip()
+        lote = (obj.get("lote") or "").strip()
+        if not rua:
+            return None
+        reconstructed = rua
+        if quadra and lote:
+            reconstructed += f", {quadra}-{lote}"
+        return reconstructed
+    except Exception as e:
+        print("AI extraction error:", e)
+        return None
+
 def extract_street_base(addr: str) -> str:
     up = addr.upper()
     cut = len(up)
@@ -525,6 +570,29 @@ async def upload_file(file: UploadFile = File(...)):
             partial_flags.append(False)
             continue
         
+        # -------------------------------
+        # AI extraction attempt (antes do HERE)
+        # -------------------------------
+        try:
+            ai_normalized = await ai_extract_address(row.get("Destination Address", ""))
+        except Exception:
+            ai_normalized = None
+
+        if ai_normalized:
+            lat_ai, lng_ai, cep_ai, street_ai = await geocode_with_here(ai_normalized)
+            street_base_norm = extract_street_base(normalized).upper()
+            street_base_ai = extract_street_base(street_ai or "").upper()
+
+            ok_ai = (
+                (cep_ai and cep_original and cep_ai.replace("-", "") == cep_original.replace("-", "")) or
+                (street_base_norm and street_base_ai.startswith(street_base_norm))
+            )
+            if ok_ai:
+                final_lat.append(lat_ai)
+                final_lng.append(lng_ai)
+                partial_flags.append(False)
+                continue
+
         lat, lng, cep_here, street = await geocode_with_here(normalized)
 
         #Tentativa para Ruas que existem no padrão RUA XX-00 / RUA XX-000
