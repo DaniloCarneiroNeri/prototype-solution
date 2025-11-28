@@ -11,7 +11,7 @@ COPY requirements.txt .
 
 RUN pip install --prefix=/install --no-cache-dir -r requirements.txt && \
     pip install --prefix=/install --no-cache-dir google-generativeai openpyxl python-multipart
-    pip install --prefix=/install --no-cache-dir openai openpyxl python-multipart
+RUN pip install --prefix=/install --no-cache-dir openai openpyxl python-multipart
 
 # Stage 2 – Imagem Final
 FROM python:3.11-slim
