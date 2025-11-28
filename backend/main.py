@@ -3,19 +3,16 @@ import uvicorn
 import re
 import json
 import math
-import asyncio
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import aiohttp
 from io import BytesIO
-from typing import Optional, Dict, Any
+from typing import Optional
 
-# ============================================================
-# CONFIGURAÇÕES
-# ============================================================
 app = FastAPI()
 
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -24,96 +21,7 @@ app.add_middleware(
 )
 
 HERE_API_KEY = os.getenv("HERE_API_KEY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
-# ============================================================
-# INTEGRAÇÃO IA (GEMINI - CORREÇÃO DE MODELOS)
-# ============================================================
-async def parse_address_with_ai(raw_text: str) -> Dict[str, str]:
-    """
-    Extração de endereço via Gemini 1.5 Flash/Pro versão estável.
-    Compatível com o SDK google-generativeai atual.
-    """
-    if not GOOGLE_API_KEY:
-        return None
-
-    try:
-        import google.generativeai as genai
-        genai.configure(api_key=GOOGLE_API_KEY)
-
-        # Modelos que REALMENTE existem no SDK atual
-        models_to_try = [
-            "gemini-1.5-flash-001",
-            "gemini-1.5-pro-001",
-            "gemini-2.0-flash",
-            "gemini-2.0-pro",
-        ]
-
-        prompt = (
-            f"Extraia rua, quadra, lote e bairro do texto abaixo.\n"
-            f"Sempre retorne JSON puro.\n"
-            f"Exemplo: Rua RC 18 Q23 Lt01 → {{'rua':'Rua RC 18','quadra':'23','lote':'1'}}\n\n"
-            f"Texto: {raw_text}"
-        )
-
-        for model_name in models_to_try:
-            print(f"[IA] Tentando modelo: {model_name}")
-
-            try:
-                model = genai.GenerativeModel(model_name)
-
-                # Chamadas Gemini funcionam melhor passando lista
-                response = await asyncio.to_thread(model.generate_content, [prompt])
-
-                # Extração segura do texto
-                text_resp = ""
-                try:
-                    text_resp = response.candidates[0].content.parts[0].text
-                except:
-                    text_resp = getattr(response, "text", "") or ""
-
-                print(f"[IA RAW]: {text_resp}")
-
-                # Normaliza para JSON
-                clean = (
-                    text_resp.replace("```json", "")
-                    .replace("```", "")
-                    .strip()
-                )
-
-                if "{" in clean:
-                    clean = clean[clean.find("{"):]
-
-                data = json.loads(clean)
-                print(f"[IA PARSED]: {data}")
-                return data
-
-            except Exception as e:
-                print(f"[IA ERRO MODELO {model_name}]: {e}")
-                continue
-
-        return None
-
-    except Exception as e:
-        print(f"Erro Crítico IA: {e}")
-        return None
-
-
-# ============================================================
-# UTILITÁRIOS E REGEX (MANTENDO A SUA LÓGICA BASE)
-# ============================================================
-def extract_street_base(addr: str) -> str:
-    """Remove Quadra, Lote e pontuação para comparar nomes de rua."""
-    if not addr: return ""
-    up = str(addr).upper()
-    # Corta antes de indicativos de quadra/lote ou vírgulas
-    cut = len(up)
-    for token in [" Q", " QUADRA", " QD", " LT", " LOTE", ",", " - "]:
-        pos = up.find(token)
-        if pos != -1:
-            cut = min(cut, pos)
-    return addr[:cut].strip()
 
 # ============================================================
 # NORMALIZAÇÃO DO ENDEREÇO
@@ -190,34 +98,9 @@ def normalize_address(raw, bairro):
         text = re.sub(r"(^|\s)R\s+(?=[A-Z])", r"\1RUA ", text, flags=re.IGNORECASE)
         text_upper = text.upper()
 
-
-        # ============================================================
-        # REGRA ESPECIAL — RUA MDV-x  (SEM ZERO-PAD)
-        # ============================================================
-        rua_mdv = re.search(
-            r"\bRUA\s+MDV\s*[- ]?\s*(\d{1,3})\b",
-            text_upper
-        )
-
-        if rua_mdv:
-            numero = rua_mdv.group(1).lstrip("0") or "0"
-            novo_padrao = f"RUA MDV-{numero}"
-
-            text = re.sub(
-                r"\bRUA\s+MDV\s*[- ]?\s*\d{1,3}\b",
-                novo_padrao,
-                text,
-                flags=re.IGNORECASE
-            )
-            text_upper = text.upper()
-
-
-        # ============================================================
-        # Captura “RUA AC3”, “RUA AC 3”, “RUA RI 15”, etc.
-        # *** EXCLUINDO MDV ***
-        # ============================================================
+        # Captura "RUA AC3", "RUA AC 3", "RUA RI 15", etc. (mantido, mas robusto)
         rua_codigo = re.search(
-            r"\bRUA\s+(?!MDV)([A-Z]{1,3})\s*[- ]?\s*(\d{1,3})\b",
+            r"\bRUA\s+([A-Z]{1,3})\s*[- ]?\s*(\d{1,3})\b",
             text_upper
         )
 
@@ -227,7 +110,7 @@ def normalize_address(raw, bairro):
             novo_padrao = f"RUA {codigo}-{numero}"
 
             text = re.sub(
-                r"\bRUA\s+(?!MDV)[A-Z]{1,3}\s*[- ]?\s*\d{1,3}\b",
+                r"\bRUA\s+[A-Z]{1,3}\s*[- ]?\s*\d{1,3}\b",
                 novo_padrao,
                 text,
                 flags=re.IGNORECASE
@@ -254,21 +137,23 @@ def normalize_address(raw, bairro):
             )
             text_upper = text.upper()
 
-        # RC — tornar captura robusta e aplicar zero-pad de 3 dígitos
-        rc = re.search(r"\b(?:RUA|R)\s+RC\s*[- ]?\s*(\d{1,3})\b", text_upper)
-        if rc:
-            numero = rc.group(1).lstrip("0") or "0"
-            numero = numero.zfill(3)  # aplicar zero-pad para RC também
-            novo_padrao = f"RUA RC-{numero}"
+        # RC — tornar captura robusta: captura mesmo se seguido por letra/pontuação
+        rc_search = re.search(r"(\b(?:RUA|R)\s+RC\s*[- ]?\s*)(\d{1,3})", text_upper, flags=0)
+        if rc_search:
+            rc_num = rc_search.group(2).lstrip("0") or "0"
+            def _rc_sub(m):
+                prefix = m.group(1)
+                return f"{prefix}{rc_num}"
+
+            text = re.sub(r"(\b(?:RUA|R)\s+RC\s*[- ]?\s*)(\d{1,3})", lambda m: _rc_sub(m), text, flags=re.IGNORECASE)
 
             text = re.sub(
-                r"\b(?:RUA|R)\s+RC\s*[- ]?\s*\d{1,3}\b",
-                novo_padrao,
+                r"(\b(?:RUA|R)\s+RC\s*[- ]?\s*)(\d{1,3})",
+                lambda m: f"RUA RC-{rc_num}",
                 text,
                 flags=re.IGNORECASE
             )
             text_upper = text.upper()
-
 
         # ------------------------------- (mantido)
         # Regra nova: converter "Rua <numero>" para extenso (mantido)
@@ -416,252 +301,231 @@ def normalize_address(raw, bairro):
     except Exception as e:
         return f"[ERRO-NORMALIZE] {str(e)}"
 
+
 # ============================================================
-# GEOCODING HERE (OTIMIZADO)
+# GEOCODING HERE
 # ============================================================
-async def geocode_with_here(query: str, city_context: str = "Goiânia", state_context: str = "GO"):
-    """
-    Consulta a API da HERE.
-    Adiciona contexto forçado de cidade/estado na query string para evitar ambiguidade.
-    """
+async def geocode_with_here(address: str):
     if not HERE_API_KEY:
-        return None, None, None, None, "API_KEY_MISSING"
+        print("HERE_API_KEY NOT FOUND → returning dummy coords")
+        return -16.70, -49.20, None
 
-    # Monta uma query qualificada para melhorar a precisão
-    # Se a query já não tiver "Goiânia", adicionamos.
-    final_query = query
-    if "GOIANIA" not in query.upper().replace("â", "A"):
-        final_query = f"{query}, {city_context}, {state_context}, Brasil"
-
-    encoded_query = final_query.replace(" ", "%20")
-    url = f"https://geocode.search.hereapi.com/v1/geocode?q={encoded_query}&apiKey={HERE_API_KEY}&limit=1"
+    url = f"https://geocode.search.hereapi.com/v1/geocode?q={address}&apiKey={HERE_API_KEY}"
 
     async with aiohttp.ClientSession() as session:
         try:
             async with session.get(url, timeout=10) as response:
                 if response.status != 200:
-                    return None, None, None, None, f"HTTP_{response.status}"
+                    print("HERE error:", await response.text())
+                    return None, None, None
 
                 data = await response.json()
-                items = data.get("items", [])
 
-                if not items:
-                    return None, None, None, None, "NOT_FOUND"
+                if "items" in data and len(data["items"]) > 0:
+                    item = data["items"][0]
+                    pos = item.get("position", {})
 
-                item = items[0]
-                pos = item.get("position", {})
-                addr = item.get("address", {})
+                    lat = pos.get("lat")
+                    lng = pos.get("lng")
 
-                lat = pos.get("lat")
-                lng = pos.get("lng")
-                postal = addr.get("postalCode")
-                street_found = addr.get("street")
-                
-                # Verifica score de relevância se disponível (opcional)
-                scoring = item.get("scoring", {})
-                
-                return lat, lng, postal, street_found, "OK"
+                    postal = None
+                    address_info = item.get("address", {})
+                    if "postalCode" in address_info:
+                        postal = address_info["postalCode"]
+
+                    return lat, lng, postal
 
         except Exception as e:
-            return None, None, None, None, str(e)
+            print("HERE Exception:", e)
 
-# ============================================================
-# HELPER: Extração Agressiva de Quadra/Lote
-# ============================================================
-def extract_quadra_lote_values(text):
-    """
-    Extrai números de Quadra (Q) e Lote (L) ignorando zeros à esquerda.
-    Suporta: "Qd 05", "Q.5", "Quadra 5", "Q-05", "Q05"
-    """
-    if not text:
-        return None, None
-
-    text_clean = text.upper().replace(".", " ").replace(",", " ").replace("-", " ")
-
-    q_val = None
-    l_val = None
-
-    match_q = re.search(r"(?:\bQ|\bQD|\bQUADRA|\bQDA)[\s]*0*(\d+)\b", text_clean)
-    if match_q:
-        q_val = str(int(match_q.group(1)))  # remove zeros à esquerda
-
-    match_l = re.search(r"(?:\bL|\bLT|\bLOTE)[\s]*0*(\d+)\b", text_clean)
-    if match_l:
-        l_val = str(int(match_l.group(1)))
-
-    return q_val, l_val
+    return None, None, None
 
 
 # ============================================================
-# ROTINA PRINCIPAL AJUSTADA – COM PARTIAL_MATCH
-# ============================================================
-async def find_best_location(normalized_addr: str, original_cep: str, bairro: str, original_raw: str):
-    # Parsing IA (fallback)
-    ai_parsed = None
-    #if GOOGLE_API_KEY:
-        #try:
-            #ai_parsed = await parse_address_with_ai(original_raw)
-        #except:
-            #pass
-
-    # ---- TARGET QUADRA E LOTE ----
-    target_q, target_l = extract_quadra_lote_values(original_raw)
-
-    if not target_q:
-        target_q, target_l = extract_quadra_lote_values(normalized_addr)
-
-    if not target_q and ai_parsed:
-        target_q = ai_parsed.get("quadra")
-        target_l = ai_parsed.get("lote")
-        if target_q and target_q.isdigit(): target_q = str(int(target_q))
-        if target_l and target_l.isdigit(): target_l = str(int(target_l))
-
-    # ---- Estratégias ----
-    strategies = [
-        {"query": normalized_addr,            "type": "EXACT_NORMALIZED"},
-        {"query": f"{normalized_addr}, {bairro}", "type": "WITH_BAIRRO"} if bairro else None
-    ]
-    strategies = [s for s in strategies if s]
-
-    # ---- EXECUÇÃO ----
-    for strat in strategies:
-        lat, lng, found_cep, found_street, status = await geocode_with_here(strat["query"])
-        if status != "OK":
-            continue
-
-        # ---- Dados encontrados ----
-        found_q, found_l = extract_quadra_lote_values(found_street)
-
-        street_in  = extract_street_base(normalized_addr).upper()
-        street_out = extract_street_base(found_street).upper()
-        rua_match = (street_in in street_out) or (street_out in street_in)
-
-        quadra_div = (target_q and found_q and target_q != found_q)
-        rua_div    = not rua_match
-
-        cep_clean = original_cep.replace("-", "").replace(".", "").strip()
-        cep_match = (found_cep and cep_clean and found_cep.replace("-", "") == cep_clean)
-
-        # ============================================================
-        # 🔥 REGRA 1 — QUADRA divergente
-        #    Ignora estratégias tipo WITH_BAIRRO
-        #    Retorna PARTIAL_MATCH SEM discussão
-        # ============================================================
-        if quadra_div:
-            if strat["type"] == "WITH_BAIRRO":
-                continue  # ignora esta estratégia
-            return lat, lng, True, "PARTIAL_MATCH"
-
-        # ============================================================
-        # 🔥 REGRA 2 — RUA divergente
-        #    Ignora completamente CEP_MATCH
-        #    Retorna PARTIAL_MATCH
-        # ============================================================
-        if rua_div:
-            return lat, lng, True, "PARTIAL_MATCH"
-
-        # ---- Fluxo original ----
-        if rua_match:
-            return lat, lng, False, strat["type"]
-
-        if cep_match:
-            return lat, lng, False, "CEP_MATCH"
-
-    # ---- Vizinhos (mantém igual) ----
-    if target_q and target_l:
-        try:
-            l_num = int(target_l)
-            base_rua = extract_street_base(normalized_addr)
-
-            for offset in [1, -1, 2, -2]:
-                new_l = l_num + offset
-                if new_l <= 0:
-                    continue
-
-                q = f"{base_rua}, Quadra {target_q}, Lote {new_l}"
-                if bairro:
-                    q += f", {bairro}"
-
-                lat, lng, _, found_street, status = await geocode_with_here(q)
-                if status != "OK":
-                    continue
-
-                found_q_neighbor, _ = extract_quadra_lote_values(found_street)
-                if found_q_neighbor and found_q_neighbor != target_q:
-                    continue
-
-                return lat, lng, True, f"PARTIAL_LOTE_{offset}"
-
-        except:
-            pass
-
-    return "Não encontrado", "Não encontrado", False, "FAILED"
-
-
-# ============================================================
-# ENDPOINT
+# ENDPOINT /upload
 # ============================================================
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
     try:
         raw = await file.read()
         df = pd.read_excel(BytesIO(raw))
+        df = df.reset_index(drop=True)
     except Exception as e:
         raise HTTPException(400, f"Erro ao ler Excel: {e}")
 
-    # Colunas obrigatórias
-    req_cols = ["Destination Address", "Zipcode/Postal code"]
-    if not all(col in df.columns for col in req_cols):
+    if "Destination Address" not in df.columns or "Zipcode/Postal code" not in df.columns:
         raise HTTPException(422, "Colunas obrigatórias ausentes")
 
-    # Garante coluna de Bairro
-    if "Bairro" not in df.columns:
-        df["Bairro"] = ""
+    df["Normalized_Address"] = df.apply(
+    lambda r: normalize_address(r["Destination Address"], r["Bairro"]),
+    axis=1)
 
-    results_lat = []
-    results_lng = []
-    results_partial = []
-    results_method = []
+    final_lat = []
+    final_lng = []
+    partial_flags = [] 
+    cond_flags = []
 
-    # Processamento Assíncrono (para ser rápido)
-    # Se o arquivo for muito grande, ideal é usar tasks em background ou batch
     for idx, row in df.iterrows():
-        raw_addr = row["Destination Address"]
-        cep = row["Zipcode/Postal code"]
-        bairro = row["Bairro"]
-        
-        # 1. Normalização (Sua função original)
-        normalized = normalize_address(raw_addr, bairro)
-        
-        # 2. Verifica se é condomínio (skip lógico)
-        if "CONDOMINIO" in normalized.upper() and "RUA" not in normalized.upper():
-            results_lat.append("")
-            results_lng.append("")
-            results_partial.append(False)
-            results_method.append("COND_SKIP")
+        normalized = row.get("Normalized_Address", "")
+        cep_original = str(row["Zipcode/Postal code"]).strip()
+        bairro_raw = row.get("Bairro", "")
+        bairro = "" if pd.isna(bairro_raw) else str(bairro_raw).strip()
+        bairro_upper = bairro.upper()
+
+        # -------------------------------
+        # Validação condominio
+        # -------------------------------
+        cond_keywords = ["Condominio"]
+
+        if any(k in normalized for k in cond_keywords):
+            cond_flags.append(True)
+            final_lat.append("")
+            final_lng.append("")
+            partial_flags.append(False)
             continue
 
-        # 3. Busca Inteligente
-        lat, lng, is_partial, method = await find_best_location(normalized, cep, bairro, raw_addr)
+        cond_flags.append(False)
+
+        # -------------------------------
+        # Primeira tentativa
+        # -------------------------------
+        match_quad_lote = re.search(r",\s*([0-9]+)-([0-9]+)$", normalized)
+        match_quad_quadra = re.search(r"\bQUADRA\b|\bQ([0-9]+)", normalized, re.IGNORECASE)
+
+        if not match_quad_lote and not match_quad_quadra:
+            final_lat.append("Não encontrado")
+            final_lng.append("Não encontrado")
+            partial_flags.append(False)
+            continue
         
-        results_lat.append(lat)
-        results_lng.append(lng)
-        results_partial.append(is_partial)
-        results_method.append(method)
+        lat, lng, cep_here = await geocode_with_here(normalized)
 
-    df["Geo_Latitude"] = results_lat
-    df["Geo_Longitude"] = results_lng
-    df["Partial_Match"] = results_partial
-    df["Match_Method"] = results_method
+        match_ok = cep_here and cep_here.replace("-", "") == cep_original.replace("-", "")
 
-    # Sanitização JSON
-    records = json.loads(df.to_json(orient="records"))
+        if match_ok:
+            final_lat.append(lat)
+            final_lng.append(lng)
+            partial_flags.append(False)
+            continue
+
+        # -------------------------------
+        # tentativa (com Bairro)
+        # -------------------------------
+        second_query = f"{normalized}, {bairro}"
+        lat2, lng2, cep_here2 = await geocode_with_here(second_query)
+
+        match_ok2 = cep_here2 and cep_here2.replace("-", "") == cep_original.replace("-", "")
+
+        if match_ok2:
+            final_lat.append(lat2)
+            final_lng.append(lng2)
+            partial_flags.append(False)
+            continue
+
+        # -------------------------------
+        # Trativa com cidade (com Bairro) (sem cep)
+        # -------------------------------
+        cidade = "Goiania, Goiânia - GO"
+        second_query = f"{normalized}, {bairro}, {cidade}"
+        lat2, lng2, cep_here2 = await geocode_with_here(second_query)
+
+        if lat2:
+            final_lat.append(lat2)
+            final_lng.append(lng2)
+            partial_flags.append(True)
+            continue
+
+        # -----------------------------------------------
+        # tentativa (substituir bairro → Novo Horizonte)
+        # Somente nos bairros autorizados
+        # -----------------------------------------------
+        BAIRROS_RETRY = {
+            "SETOR FAIÇALVILLE",
+            "FAIÇALVILLE II",
+            "JARDIM VILA BOA"
+        }    
+
+        if bairro_upper in BAIRROS_RETRY:
+            third_query = f"{normalized}, Novo Horizonte"
+            lat3, lng3, cep_here3 = await geocode_with_here(third_query)
+
+            match_ok3 = cep_here3 and cep_here3.replace("-", "") == cep_original.replace("-", "")
+
+            if match_ok3:
+                final_lat.append(lat3)
+                final_lng.append(lng3)
+                partial_flags.append(False)
+                continue
+
+        # ----------------------------------------------
+        # Tentativa parcial — lote ± 1 / ± 2
+        # ----------------------------------------------
+        match_quad_lote = re.search(r",\s*([0-9]+)-([0-9]+)$", normalized)
+
+        if match_quad_lote:
+            quadra_num = int(match_quad_lote.group(1))
+            lote_num = int(match_quad_lote.group(2))
+
+            base = normalized.rsplit(",", 1)[0]
+
+            offsets = [1, 2, -1, -2]
+
+            found_partial = False
+            for off in offsets:
+                novo_lote = lote_num + off
+                if novo_lote < 0:
+                    continue
+
+                tentativa = f"{base}, {quadra_num}-{novo_lote}"
+                latp, lngp, cep_part = await geocode_with_here(tentativa)
+
+                match_okp = cep_part and cep_part.replace("-", "") == cep_original.replace("-", "")
+
+                if match_okp:
+                    final_lat.append(latp)
+                    final_lng.append(lngp)
+                    partial_flags.append(True)   # <<< PARCIAL
+                    found_partial = True
+                    break
+
+            if found_partial:
+                continue
+
+        # -------------------------------
+        # Falhou → "Não encontrado"
+        # -------------------------------
+        final_lat.append("Não encontrado")
+        final_lng.append("Não encontrado")
+        partial_flags.append(False)
+
+    df["Geo_Latitude"] = final_lat
+    df["Geo_Longitude"] = final_lng
+    df["Partial_Match"] = pd.Series(partial_flags, index=df.index, dtype=bool)
+    df["Cond_Match"] = pd.Series(cond_flags, index=df.index, dtype=bool)
+
+    # Sanitização de saída
+    records = []
+    for r in df.to_dict(orient="records"):
+        clean = {}
+        for k, v in r.items():
+            if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                clean[k] = None
+            else:
+                clean[k] = v
+        clean["Partial_Match"] = r.get("Partial_Match", False)
+        clean["Cond_Match"] = r.get("Cond_Match", False)
+        records.append(clean)
 
     return {
         "filename": file.filename,
         "rows": len(records),
+        "columns_count": len(df.columns),
         "data": records
     }
+
+@app.get("/")
+def root():
+    return {"status": "ok", "message": "Backend online"}
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000)
