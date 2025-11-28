@@ -24,51 +24,52 @@ app.add_middleware(
 )
 
 HERE_API_KEY = os.getenv("HERE_API_KEY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") # Opcional: Para parser inteligente
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") 
 
 # ============================================================
-# INTEGRAÇÃO IA (OPENAI) - Parser Inteligente
+# INTEGRAÇÃO IA (GOOGLE GEMINI - GRATUITO/ROBUSTO)
 # ============================================================
 async def parse_address_with_ai(raw_text: str) -> Dict[str, str]:
     """
-    Usa IA para estruturar endereços difíceis que o Regex pode perder.
-    Requer OPENAI_API_KEY. Retorna dict com componentes.
+    Usa Google Gemini para estruturar endereços.
+    Requer GOOGLE_API_KEY.
     """
-    if not OPENAI_API_KEY:
+    if not GOOGLE_API_KEY:
         return None
 
     try:
-        from openai import AsyncOpenAI
-        client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+        import google.generativeai as genai
+        
+        genai.configure(api_key=GOOGLE_API_KEY)
+        model = genai.GenerativeModel('gemini-1.5-flash') # Modelo rápido e econômico
 
         prompt = (
-            f"Extraia o endereço do texto abaixo para formato JSON com chaves: "
-            f"rua, quadra, lote, bairro, numero (se houver). "
-            f"O contexto é Goiânia, Brasil. Padronize 'RUA T 63' para 'Rua T-63'. "
+            f"Analise o endereço abaixo (contexto Goiânia) e extraia em JSON: "
+            f"{{'rua': string, 'quadra': string, 'lote': string, 'bairro': string}}. "
+            f"Se não tiver quadra/lote, tente achar o número. Padronize 'RUA T 63' para 'Rua T-63'. "
             f"Texto: '{raw_text}'"
         )
 
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini", # Modelo rápido e barato
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-            temperature=0
-        )
+        # O Gemini não tem modo JSON nativo estrito como OpenAI, então pedimos texto e limpamos
+        response = await asyncio.to_thread(model.generate_content, prompt)
+        text_resp = response.text
         
-        content = response.choices[0].message.content
-        return json.loads(content)
+        # Limpeza básica para garantir JSON
+        json_str = text_resp.replace("```json", "").replace("```", "").strip()
+        data = json.loads(json_str)
+        return data
+
     except Exception as e:
-        print(f"Erro IA: {e}")
+        print(f"Erro IA (Gemini): {e}")
         return None
 
 # ============================================================
-# UTILITÁRIOS E REGEX (MANTENDO A SUA LÓGICA BASE)
+# UTILITÁRIOS
 # ============================================================
 def extract_street_base(addr: str) -> str:
     """Remove Quadra, Lote e pontuação para comparar nomes de rua."""
     if not addr: return ""
     up = str(addr).upper()
-    # Corta antes de indicativos de quadra/lote ou vírgulas
     cut = len(up)
     for token in [" Q", " QUADRA", " QD", " LT", " LOTE", ",", " - "]:
         pos = up.find(token)
@@ -378,160 +379,152 @@ def normalize_address(raw, bairro):
         return f"[ERRO-NORMALIZE] {str(e)}"
 
 # ============================================================
-# GEOCODING HERE (OTIMIZADO)
+# GEOCODING HERE (COM DETECÇÃO DE PRECISÃO)
 # ============================================================
 async def geocode_with_here(query: str, city_context: str = "Goiânia", state_context: str = "GO"):
     """
-    Consulta a API da HERE.
-    Adiciona contexto forçado de cidade/estado na query string para evitar ambiguidade.
+    Retorna lat, lng, postal, street, status E AGORA TAMBÉM O resultType.
+    resultType diz se ele achou o número exato ('houseNumber') ou só a rua ('street').
     """
     if not HERE_API_KEY:
-        return None, None, None, None, "API_KEY_MISSING"
+        return None, None, None, None, "API_KEY_MISSING", None
 
-    # Monta uma query qualificada para melhorar a precisão
-    # Se a query já não tiver "Goiânia", adicionamos.
     final_query = query
+    # Força contexto geográfico se não presente
     if "GOIANIA" not in query.upper().replace("â", "A"):
         final_query = f"{query}, {city_context}, {state_context}, Brasil"
 
     encoded_query = final_query.replace(" ", "%20")
+    # Pedimos resultType na resposta
     url = f"https://geocode.search.hereapi.com/v1/geocode?q={encoded_query}&apiKey={HERE_API_KEY}&limit=1"
 
     async with aiohttp.ClientSession() as session:
         try:
             async with session.get(url, timeout=10) as response:
                 if response.status != 200:
-                    return None, None, None, None, f"HTTP_{response.status}"
+                    return None, None, None, None, f"HTTP_{response.status}", None
 
                 data = await response.json()
                 items = data.get("items", [])
 
                 if not items:
-                    return None, None, None, None, "NOT_FOUND"
+                    return None, None, None, None, "NOT_FOUND", None
 
                 item = items[0]
                 pos = item.get("position", {})
                 addr = item.get("address", {})
+                
+                # Importante: Qual foi o nível de precisão?
+                # 'houseNumber' = Achou o número/lote exato
+                # 'street' = Não achou o número, devolveu o centro da rua
+                result_type = item.get("resultType", "unknown")
 
                 lat = pos.get("lat")
                 lng = pos.get("lng")
                 postal = addr.get("postalCode")
                 street_found = addr.get("street")
                 
-                # Verifica score de relevância se disponível (opcional)
-                scoring = item.get("scoring", {})
-                
-                return lat, lng, postal, street_found, "OK"
+                return lat, lng, postal, street_found, "OK", result_type
 
         except Exception as e:
-            return None, None, None, None, str(e)
+            return None, None, None, None, str(e), None
 
 # ============================================================
-# ROTINA PRINCIPAL DE BUSCA (A Lógica Robusta)
+# LÓGICA PRINCIPAL (REFATORADA PARA VIZINHOS)
 # ============================================================
 async def find_best_location(normalized_addr: str, original_cep: str, bairro: str, original_raw: str):
-    """
-    Tenta encontrar o endereço usando múltiplas estratégias em cascata.
-    """
     
-    # 1. Tentar parse via IA se disponível (muito útil para endereços bagunçados)
-    # Se você configurar a OPENAI_KEY, descomente a lógica abaixo
+    # --- 1. Tentar parse via IA (Gemini) se disponível ---
     ai_parsed = None
-    if OPENAI_API_KEY:
-         ai_parsed = await parse_address_with_ai(original_raw)
-         if ai_parsed and ai_parsed.get('rua'):
-             # Tenta montar um endereço limpo com a IA
-             q = ai_parsed.get('quadra', '')
-             l = ai_parsed.get('lote', '')
-             ql_str = f", Quadra {q}, Lote {l}" if q and l else ""
-             normalized_addr = f"{ai_parsed['rua']}{ql_str}"
+    if GOOGLE_API_KEY:
+        ai_parsed = await parse_address_with_ai(original_raw)
+        if ai_parsed and ai_parsed.get('rua'):
+            q = ai_parsed.get('quadra', '')
+            l = ai_parsed.get('lote', '')
+            ql_str = f", Quadra {q}, Lote {l}" if q and l else ""
+            if ql_str:
+                normalized_addr = f"{ai_parsed['rua']}{ql_str}"
 
-    strategies = []
-    
-    # Limpeza para comparação
+    # Limpeza CEP
     cep_clean = str(original_cep).replace("-", "").replace(".", "").strip()
     
-    # --- ESTRATÉGIA A: Busca Exata Normalizada ---
-    strategies.append({
-        "query": normalized_addr,
-        "type": "EXACT_NORMALIZED"
-    })
-
-    # --- ESTRATÉGIA B: Busca com Bairro Explícito (Goiânia) ---
+    # Lista de estratégias "Exatas"
+    strategies = []
+    
+    # A: Normalizada
+    strategies.append({"query": normalized_addr, "type": "EXACT_NORMALIZED"})
+    
+    # B: Com Bairro
     if bairro:
-        strategies.append({
-            "query": f"{normalized_addr}, {bairro}",
-            "type": "WITH_BAIRRO"
-        })
+        strategies.append({"query": f"{normalized_addr}, {bairro}", "type": "WITH_BAIRRO"})
 
-    # --- ESTRATÉGIA C: Tentar Variações de Zero (Rua AC-1 vs AC-01) ---
-    # Extrai parte da rua e número se existir padrão "RUA XX-YY"
-    m = re.search(r"(RUA\s+[A-Z]+)-(\d+)", normalized_addr.upper())
-    if m:
-        prefix = m.group(1)
-        num = m.group(2)
-        variants = [str(int(num)), num.zfill(2), num.zfill(3)]
-        for v in variants:
-            if v == num: continue
-            # Reconstrói a string trocando o número
-            new_addr = normalized_addr.replace(f"{prefix}-{num}", f"{prefix}-{v}")
-            strategies.append({"query": new_addr, "type": "ZERO_VARIANT"})
+    # --- EXECUÇÃO TENTATIVA EXATA ---
+    street_fallback = None # Guarda o resultado da rua caso não ache o lote vizinho
 
-    # --- EXECUÇÃO DAS ESTRATÉGIAS ---
     for strat in strategies:
-        lat, lng, found_cep, found_street, status = await geocode_with_here(strat["query"])
+        lat, lng, found_cep, found_street, status, r_type = await geocode_with_here(strat["query"])
         
         if status != "OK": continue
 
-        # Validação:
-        # 1. CEP bate?
-        cep_match = False
-        if found_cep and cep_clean:
-            if found_cep.replace("-", "") == cep_clean:
-                cep_match = True
-        
-        # 2. Rua bate (pelo menos o começo)?
+        # Validação de Nome da Rua
         street_base_in = extract_street_base(normalized_addr).upper()
         street_base_out = extract_street_base(found_street).upper()
-        name_match = street_base_in in street_base_out or street_base_out in street_base_in
-
-        # Se CEP bate ou Nome da rua é muito parecido, aceitamos
-        if cep_match or (name_match and len(street_base_in) > 3):
-            return lat, lng, False, strat["type"]
-
-    # --- ESTRATÉGIA D: VIZINHOS (Lotes +/- 1 e 2) ---
-    # Se chegamos aqui, não achamos o exato. Vamos tentar os vizinhos.
-    match_ql = re.search(r"(.*)[, ]\s*(\d+)[- ](\d+)", normalized_addr) # Padrão "Rua, Q-L"
-    if match_ql:
-        base_rua = match_ql.group(1)
-        q_num = int(match_ql.group(2))
-        l_num = int(match_ql.group(3))
+        name_match = (street_base_in in street_base_out) or (street_base_out in street_base_in)
         
-        # Tenta vizinhos próximos
-        offsets = [1, -1, 2, -2]
-        for offset in offsets:
-            new_lote = l_num + offset
-            if new_lote <= 0: continue
-            
-            # Recria query: "Rua Tal, Quadra X, Lote Y"
-            # Usar formato extenso ajuda a API: "Quadra X Lote Y"
-            neighbor_query = f"{base_rua}, Quadra {q_num}, Lote {new_lote}"
-            lat, lng, found_cep, found_street, status = await geocode_with_here(neighbor_query)
-            
-            if status == "OK":
-                 # Aqui somos menos rigorosos com CEP, pois estamos buscando vizinho
-                 return lat, lng, True, f"PARTIAL_LOTE_{offset}"
+        if not name_match:
+            continue # Rua errada, ignora
 
-    # --- ESTRATÉGIA E: APENAS A RUA (Centroide) ---
-    # Última tentativa: Achar onde fica a rua no bairro, sem o numero
-    street_only = extract_street_base(normalized_addr)
-    if street_only and len(street_only) > 3:
-        query_street = f"{street_only}, {bairro or ''}"
-        lat, lng, _, found_street, status = await geocode_with_here(query_street)
-        if status == "OK":
-             # Verifica se o nome retornado tem a ver com o buscado
-             if extract_street_base(found_street).upper().startswith(street_only.upper()):
-                 return lat, lng, True, "STREET_CENTROID"
+        # Validação CRÍTICA: Se for resultType == 'street', significa que a HERE 
+        # ignorou o Quadra/Lote e devolveu o centro da rua.
+        # Nós NÃO queremos aceitar isso imediatamente, pois pode estar longe.
+        # Guardamos como fallback, mas vamos tentar os vizinhos.
+        
+        if r_type == "houseNumber" or r_type == "pointAddress":
+            return lat, lng, False, strat["type"]
+        else:
+            if street_fallback is None:
+                street_fallback = (lat, lng, True, f"{strat['type']}_APPROX")
+
+    # --- ESTRATÉGIA: VIZINHOS (Lotes +/- 1 e 2) ---
+    # Só chegamos aqui se a busca exata falhou ou retornou apenas "street" (centro da rua)
+    
+    # Regex para extrair Rua, Quadra e Lote
+    # Procura padrões como "Rua X, Qd 10 Lt 20" ou "Rua X, Quadra 10 Lote 20"
+    match_ql = re.search(r"(.*?)[\s,]+(?:QD|QUADRA|Q)\.?\s*(\d+)[\s,]+(?:LT|LOTE|L)\.?\s*(\d+)", normalized_addr, re.IGNORECASE)
+    
+    if match_ql:
+        base_rua = match_ql.group(1).strip()
+        q_num = match_ql.group(2)
+        l_num_str = match_ql.group(3)
+        
+        try:
+            l_num = int(l_num_str)
+            
+            # Tenta vizinhos: -1, +1, -2, +2
+            offsets = [-1, 1, -2, 2]
+            
+            for offset in offsets:
+                new_lote = l_num + offset
+                if new_lote <= 0: continue
+                
+                # Monta query explícita: "Rua X, Quadra Y, Lote Z"
+                # Forçamos o formato extenso para ajudar a API
+                neighbor_query = f"{base_rua}, Quadra {q_num}, Lote {new_lote}, Goiânia, GO"
+                
+                lat, lng, found_cep, found_street, status, r_type = await geocode_with_here(neighbor_query)
+                
+                if status == "OK" and (r_type == "houseNumber" or r_type == "pointAddress"):
+                    # Se achou um vizinho com precisão "houseNumber", é muito melhor que o centro da rua
+                    return lat, lng, True, f"NEIGHBOR_LOTE_{offset}"
+                    
+        except ValueError:
+            pass # Lote não era numérico
+
+    # --- FALLBACK ---
+    # Se não achou exato (houseNumber) e não achou vizinhos (houseNumber),
+    # devolvemos o centro da rua (street) que achamos na primeira etapa, se houver.
+    if street_fallback:
+        return street_fallback[0], street_fallback[1], street_fallback[2], street_fallback[3]
 
     return "Não encontrado", "Não encontrado", False, "FAILED"
 
@@ -547,39 +540,32 @@ async def upload_file(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(400, f"Erro ao ler Excel: {e}")
 
-    # Colunas obrigatórias
     req_cols = ["Destination Address", "Zipcode/Postal code"]
     if not all(col in df.columns for col in req_cols):
         raise HTTPException(422, "Colunas obrigatórias ausentes")
 
-    # Garante coluna de Bairro
-    if "Bairro" not in df.columns:
-        df["Bairro"] = ""
+    if "Bairro" not in df.columns: df["Bairro"] = ""
 
     results_lat = []
     results_lng = []
     results_partial = []
     results_method = []
 
-    # Processamento Assíncrono (para ser rápido)
-    # Se o arquivo for muito grande, ideal é usar tasks em background ou batch
     for idx, row in df.iterrows():
         raw_addr = row["Destination Address"]
         cep = row["Zipcode/Postal code"]
         bairro = row["Bairro"]
         
-        # 1. Normalização (Sua função original)
         normalized = normalize_address(raw_addr, bairro)
         
-        # 2. Verifica se é condomínio (skip lógico)
-        if "CONDOMINIO" in normalized.upper() and "RUA" not in normalized.upper():
-            results_lat.append("")
-            results_lng.append("")
-            results_partial.append(False)
-            results_method.append("COND_SKIP")
-            continue
+        # Skip Condominios se necessario (mantido sua logica)
+        if "CONDOMINIO" in str(normalized).upper() and "RUA" not in str(normalized).upper():
+             results_lat.append("")
+             results_lng.append("")
+             results_partial.append(False)
+             results_method.append("COND_SKIP")
+             continue
 
-        # 3. Busca Inteligente
         lat, lng, is_partial, method = await find_best_location(normalized, cep, bairro, raw_addr)
         
         results_lat.append(lat)
@@ -592,7 +578,6 @@ async def upload_file(file: UploadFile = File(...)):
     df["Partial_Match"] = results_partial
     df["Match_Method"] = results_method
 
-    # Sanitização JSON
     records = json.loads(df.to_json(orient="records"))
 
     return {

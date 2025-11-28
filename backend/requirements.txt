@@ -2,7 +2,7 @@ fastapi
 uvicorn
 pandas
 aiohttp
-openpyxl        
-python-multipart 
-openai          
-requests        
+requests
+python-multipart
+openpyxl
+google-generativeai

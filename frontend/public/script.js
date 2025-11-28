@@ -163,7 +163,7 @@ function renderTable(columns, data) {
     tableHead.innerHTML = "";
     tableBody.innerHTML = "";
 
-    const hiddenCols = ["Partial_Match", "Unnamed: 0","Geo_Longitude","Stop","Latitude","Longitude","Cond_Match","AT ID"];
+    const hiddenCols = ["Partial_Match", "Unnamed: 0","Geo_Longitude","Stop","Latitude","Longitude","Cond_Match","AT ID","Match_Method"];
 
     const visibleCols = columns.filter(c => !hiddenCols.includes(c));
 
