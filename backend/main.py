@@ -449,73 +449,71 @@ async def geocode_with_here(query: str, city_context: str = "Goiânia", state_co
         except Exception as e:
             return None, None, None, None, str(e)
 
-# Função auxiliar para extrair números de Quadra e Lote de strings variadas
+# ============================================================
+# HELPER: Extração de Quadra/Lote
+# ============================================================
 def extract_quadra_lote_values(text):
     """
-    Tenta extrair (quadra, lote) de strings como:
-    "Qd 05 Lt 05", "Quadra 5 Lote 5", "Q-05 L-05", "Q.05 L.05"
-    Retorna (q_str, l_str) ou (None, None)
+    Tenta extrair apenas os NÚMEROS de (quadra, lote) para comparação.
+    Remove zeros à esquerda para comparar '05' com '5'.
     """
     if not text: return None, None
-    # Regex flexível para Qd/Quadra e Lt/Lote
-    # Procura algo como Q ou Quadra seguido de numeros, e depois L ou Lote seguido de numeros
-    pattern = r"(?:QD|QUADRA|Q)[.\s]*0*(\d+)[,\s\-]*(?:LT|LOTE|L)[.\s]*0*(\d+)"
-    match = re.search(pattern, text, re.IGNORECASE)
-    if match:
-        return match.group(1), match.group(2)
-    return None, None
+    
+    # Normaliza para facilitar o regex
+    text_clean = text.upper().replace(".", " ").replace(",", " ")
+    
+    # Padrões comuns: "QD 05", "QUADRA 5", "Q-05", "Q05"
+    # Grupo 1: Quadra, Grupo 2: Lote
+    
+    # Tenta achar Quadra
+    q_val = None
+    # Regex: Procura Q, QD, QUADRA seguido opcionalmente de letras e depois digitos
+    match_q = re.search(r"\b(?:Q|QD|QUADRA|QDA)[^0-9]*(\d+)\b", text_clean)
+    if match_q:
+        q_val = str(int(match_q.group(1))) # Remove zeros à esquerda (05 -> 5)
+
+    # Tenta achar Lote
+    l_val = None
+    match_l = re.search(r"\b(?:L|LT|LOTE)[^0-9]*(\d+)\b", text_clean)
+    if match_l:
+        l_val = str(int(match_l.group(1)))
+
+    return q_val, l_val
 
 # ============================================================
-# ROTINA PRINCIPAL DE BUSCA (A Lógica Robusta)
+# ROTINA PRINCIPAL DE BUSCA
 # ============================================================
 async def find_best_location(normalized_addr: str, original_cep: str, bairro: str, original_raw: str):
-    """
-    Tenta encontrar o endereço usando múltiplas estratégias em cascata.
-    """
     
-    # 1. Tentar parse via IA se disponível
+    # 1. Tentar parse via IA (Mantido o log para debug, mas o código agora sobrevive sem ela)
     ai_parsed = None
     if GOOGLE_API_KEY:
         try:
-            print(f"--- DEBUG IA: Iniciando parse para: {original_raw} ---")
+            # print(f"--- DEBUG IA: Tentando parse... ---") 
             ai_parsed = await parse_address_with_ai(original_raw)
-            
-            if ai_parsed:
-                print(f"--- DEBUG IA: Sucesso! Retorno: {ai_parsed} ---")
-                
-                # Se a IA retornou rua, tenta melhorar o normalized_addr
-                if ai_parsed.get('rua'):
-                    q = ai_parsed.get('quadra', '')
-                    l = ai_parsed.get('lote', '')
-                    # Monta string limpa se tiver dados
-                    ql_str = f", Quadra {q}, Lote {l}" if q and l else ""
-                    normalized_addr_ai = f"{ai_parsed['rua']}{ql_str}"
-                    # Opcional: Você pode decidir usar esse endereço da IA como o principal
-                    # normalized_addr = normalized_addr_ai 
-            else:
-                print("--- DEBUG IA: Retorno vazio ou None ---")
         except Exception as e:
-            print(f"--- DEBUG IA: Erro ao processar: {e} ---")
+            print(f"--- ERRO CRÍTICO IA: {e} ---")
+
+    # Extrai Quadra e Lote da ENTRADA (Input) para validação rigorosa
+    # Tenta pegar da string crua, que costuma ter "Qd 05"
+    input_q, input_l = extract_quadra_lote_values(original_raw)
+    if not input_q:
+        input_q, input_l = extract_quadra_lote_values(normalized_addr)
 
     strategies = []
     
-    # Limpeza para comparação de CEP
     cep_clean = str(original_cep).replace("-", "").replace(".", "").strip()
     
-    # --- ESTRATÉGIA A: Busca Exata (String Normalizada) ---
-    strategies.append({
-        "query": normalized_addr,
-        "type": "EXACT_NORMALIZED"
-    })
+    # --- ESTRATÉGIAS DE BUSCA ---
+    
+    # A: Busca Exata Normalizada
+    strategies.append({"query": normalized_addr, "type": "EXACT_NORMALIZED"})
 
-    # --- ESTRATÉGIA B: Busca com Bairro Explícito ---
+    # B: Busca com Bairro
     if bairro:
-        strategies.append({
-            "query": f"{normalized_addr}, {bairro}",
-            "type": "WITH_BAIRRO"
-        })
+        strategies.append({"query": f"{normalized_addr}, {bairro}", "type": "WITH_BAIRRO"})
 
-    # --- ESTRATÉGIA C: Variações de Zero (Rua 1 vs Rua 01) ---
+    # C: Variações de Zero (Rua 1 vs Rua 01)
     m = re.search(r"(RUA\s+[A-Z]+)-(\d+)", normalized_addr.upper())
     if m:
         prefix = m.group(1)
@@ -526,13 +524,23 @@ async def find_best_location(normalized_addr: str, original_cep: str, bairro: st
             new_addr = normalized_addr.replace(f"{prefix}-{num}", f"{prefix}-{v}")
             strategies.append({"query": new_addr, "type": "ZERO_VARIANT"})
 
-    # --- EXECUÇÃO DAS ESTRATÉGIAS INICIAIS ---
+    # --- EXECUÇÃO ---
     for strat in strategies:
         lat, lng, found_cep, found_street, status = await geocode_with_here(strat["query"])
         
         if status != "OK": continue
 
-        # Validação Simples
+        # === NOVA VALIDAÇÃO RIGOROSA DE QUADRA ===
+        # Se temos uma quadra no input, a API PRECISA retornar a mesma quadra (se retornar alguma).
+        found_q, _ = extract_quadra_lote_values(found_street)
+        
+        if input_q and found_q:
+            if input_q != found_q:
+                print(f"--- REJEITADO ({strat['type']}): Input Quadra {input_q} != Found Quadra {found_q} ---")
+                continue # Pula este resultado, está errado!
+        # =========================================
+
+        # Validação de CEP e Nome da Rua
         cep_match = False
         if found_cep and cep_clean:
             if found_cep.replace("-", "") == cep_clean:
@@ -542,59 +550,69 @@ async def find_best_location(normalized_addr: str, original_cep: str, bairro: st
         street_base_out = extract_street_base(found_street).upper()
         name_match = street_base_in in street_base_out or street_base_out in street_base_in
 
+        # Se passou na validação de Quadra acima, verificamos CEP ou Nome
         if cep_match or (name_match and len(street_base_in) > 3):
             return lat, lng, False, strat["type"]
 
     # --- ESTRATÉGIA D: VIZINHOS (Lotes +/- 1 e 2) ---
-    # Aqui usamos "Partials" se a busca exata falhou.
+    # Só executamos se achamos Quadra e Lote na entrada (Input) ou via IA
     
-    # 1. Tentar extrair Q e L da string normalizada ou da raw via Regex
-    q_val, l_val = extract_quadra_lote_values(normalized_addr)
-    if not q_val:
-        q_val, l_val = extract_quadra_lote_values(original_raw)
-    
-    # 2. Se o Regex falhou, usar o que a IA encontrou (Explorar a IA)
-    if not q_val and ai_parsed:
-        print("--- DEBUG: Usando dados da IA para busca de vizinhos ---")
-        q_val = ai_parsed.get('quadra')
-        l_val = ai_parsed.get('lote')
+    search_q = input_q
+    search_l = input_l
 
-    # Se conseguimos identificar Quadra e Lote, tentamos os vizinhos
-    if q_val and l_val:
+    # Se regex falhou, tenta backup da IA
+    if (not search_q or not search_l) and ai_parsed:
+        search_q = ai_parsed.get('quadra')
+        search_l = ai_parsed.get('lote')
+
+    if search_q and search_l:
         try:
-            l_num = int(l_val)
-            # Define o nome da rua base para a busca
+            l_num = int(search_l)
             base_rua = extract_street_base(normalized_addr)
-            if ai_parsed and ai_parsed.get('rua'):
+            if ai_parsed and ai_parsed.get('rua'): 
                 base_rua = ai_parsed.get('rua')
 
-            # Tenta vizinhos próximos
             offsets = [1, -1, 2, -2]
             for offset in offsets:
                 new_lote = l_num + offset
                 if new_lote <= 0: continue
                 
-                # Monta query bem explícita para ajudar a API
-                # Ex: "Rua RC 1, Quadra 5, Lote 6, Goiânia"
-                neighbor_query = f"{base_rua}, Quadra {q_val}, Lote {new_lote}"
-                if bairro:
-                    neighbor_query += f", {bairro}"
+                # Monta query explícita: "Rua X, Quadra Y, Lote Z"
+                neighbor_query = f"{base_rua}, Quadra {search_q}, Lote {new_lote}"
+                if bairro: neighbor_query += f", {bairro}"
 
                 print(f"--- Tentando vizinho: {neighbor_query} ---")
                 lat, lng, found_cep, found_street, status = await geocode_with_here(neighbor_query)
                 
                 if status == "OK":
-                     # Aceitamos o vizinho e marcamos como PARTIAL
-                     return lat, lng, True, f"PARTIAL_LOTE_{offset}"
-        except ValueError:
-            pass # Lote não era numérico, ignora
+                    # Validação Rigorosa de Quadra também no Vizinho
+                    found_q_neighbor, _ = extract_quadra_lote_values(found_street)
+                    if found_q_neighbor and search_q != found_q_neighbor:
+                        print(f"--- Vizinho REJEITADO: Quadra retornada {found_q_neighbor} != Buscada {search_q} ---")
+                        continue
 
-    # --- ESTRATÉGIA E: APENAS A RUA (Centroide) ---
+                    return lat, lng, True, f"PARTIAL_LOTE_{offset}"
+        except ValueError:
+            pass
+
+    # --- ESTRATÉGIA E: APENAS A RUA ---
+    # Se chegou aqui, não achamos o lote/quadra exato.
+    # Mas só retornamos o centroide da rua se não houver restrição de quadra forte não atendida?
+    # O usuário pediu: "Se não for a quadra, coloque como errado". 
+    # Então, se a API retornar uma rua genérica (sem quadra), tudo bem (warning).
+    # Mas se retornar com quadra errada, rejeitamos.
+    
     street_only = extract_street_base(normalized_addr)
     if street_only and len(street_only) > 3:
         query_street = f"{street_only}, {bairro or ''}"
         lat, lng, _, found_street, status = await geocode_with_here(query_street)
+        
         if status == "OK":
+             # Validação Final de Quadra
+             found_q_street, _ = extract_quadra_lote_values(found_street)
+             if input_q and found_q_street and input_q != found_q_street:
+                 return "Não encontrado", "Não encontrado", False, "FAILED_WRONG_QUADRA"
+
              if extract_street_base(found_street).upper().startswith(street_only.upper()):
                  return lat, lng, True, "STREET_CENTROID"
 
