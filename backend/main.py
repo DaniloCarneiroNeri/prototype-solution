@@ -32,7 +32,8 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 # ============================================================
 async def parse_address_with_ai(raw_text: str) -> Dict[str, str]:
     """
-    Extrai rua, quadra, lote, bairro usando Gemini, com parser robusto.
+    Extração de endereço via Gemini 1.5 Flash/Pro versão estável.
+    Compatível com o SDK google-generativeai atual.
     """
     if not GOOGLE_API_KEY:
         return None
@@ -41,71 +42,63 @@ async def parse_address_with_ai(raw_text: str) -> Dict[str, str]:
         import google.generativeai as genai
         genai.configure(api_key=GOOGLE_API_KEY)
 
+        # Modelos que REALMENTE existem no SDK atual
         models_to_try = [
-            "gemini-1.5-flash",
-            "gemini-1.5-flash-latest",
-            "gemini-1.5-pro",
-            "gemini-1.0-pro",
-            "gemini-pro",
+            "gemini-1.5-flash-001",
+            "gemini-1.5-pro-001",
+            "gemini-2.0-flash",
+            "gemini-2.0-pro",
         ]
 
         prompt = (
-            f"Extraia o endereço do texto para JSON com as chaves: rua, quadra, lote, bairro.\n"
-            f"Exemplo: 'Rua RC 18 Q23 Lt01' -> rua='Rua RC 18', quadra='23', lote='1'.\n"
-            f"Retorne SOMENTE JSON válido.\n\n"
+            f"Extraia rua, quadra, lote e bairro do texto abaixo.\n"
+            f"Sempre retorne JSON puro.\n"
+            f"Exemplo: Rua RC 18 Q23 Lt01 → {{'rua':'Rua RC 18','quadra':'23','lote':'1'}}\n\n"
             f"Texto: {raw_text}"
         )
 
         for model_name in models_to_try:
             print(f"[IA] Tentando modelo: {model_name}")
+
             try:
                 model = genai.GenerativeModel(model_name)
 
-                # Importante: chamadas Gemini funcionam melhor com lista
+                # Chamadas Gemini funcionam melhor passando lista
                 response = await asyncio.to_thread(model.generate_content, [prompt])
 
-                # === LEITURA CORRETA DO TEXTO ===
+                # Extração segura do texto
+                text_resp = ""
                 try:
-                    # estrutura típica: candidates > content > parts > text
                     text_resp = response.candidates[0].content.parts[0].text
                 except:
-                    # fallback
                     text_resp = getattr(response, "text", "") or ""
 
                 print(f"[IA RAW]: {text_resp}")
 
-                # Limpa blocos de código
+                # Normaliza para JSON
                 clean = (
                     text_resp.replace("```json", "")
                     .replace("```", "")
                     .strip()
                 )
 
-                # pega primeiro "{"
                 if "{" in clean:
                     clean = clean[clean.find("{"):]
-                else:
-                    print("[IA] Nenhuma chave '{' encontrada no retorno.")
-                    continue
 
-                try:
-                    data = json.loads(clean)
-                    print(f"[IA PARSED]: {data}")
-                    return data
-                except Exception as e_json:
-                    print(f"[IA ERRO JSON]: {e_json}\nConteúdo recebido: {clean}")
-                    continue
+                data = json.loads(clean)
+                print(f"[IA PARSED]: {data}")
+                return data
 
             except Exception as e:
                 print(f"[IA ERRO MODELO {model_name}]: {e}")
                 continue
 
-        print("[IA] Todos modelos falharam.")
         return None
 
     except Exception as e:
         print(f"Erro Crítico IA: {e}")
         return None
+
 
 # ============================================================
 # UTILITÁRIOS E REGEX (MANTENDO A SUA LÓGICA BASE)
@@ -503,7 +496,7 @@ def extract_quadra_lote_values(text):
 # ROTINA PRINCIPAL AJUSTADA – COM PARTIAL_MATCH
 # ============================================================
 async def find_best_location(normalized_addr: str, original_cep: str, bairro: str, original_raw: str):
-
+    # Parsing IA (fallback)
     ai_parsed = None
     if GOOGLE_API_KEY:
         try:
@@ -511,72 +504,81 @@ async def find_best_location(normalized_addr: str, original_cep: str, bairro: st
         except:
             pass
 
-    # --- EXTRAÇÃO DA QUADRA/Lote ALVO ---
+    # ---- TARGET QUADRA E LOTE ----
     target_q, target_l = extract_quadra_lote_values(original_raw)
+
     if not target_q:
         target_q, target_l = extract_quadra_lote_values(normalized_addr)
 
     if not target_q and ai_parsed:
         target_q = ai_parsed.get("quadra")
         target_l = ai_parsed.get("lote")
-        if target_q and target_q.isdigit():
-            target_q = str(int(target_q))
-        if target_l and target_l.isdigit():
-            target_l = str(int(target_l))
+        if target_q and target_q.isdigit(): target_q = str(int(target_q))
+        if target_l and target_l.isdigit(): target_l = str(int(target_l))
 
-    # Estratégias
-    strategies = []
-    strategies.append({"query": normalized_addr, "type": "EXACT_NORMALIZED"})
-    if bairro:
-        strategies.append({"query": f"{normalized_addr}, {bairro}", "type": "WITH_BAIRRO"})
+    # ---- Estratégias ----
+    strategies = [
+        {"query": normalized_addr,            "type": "EXACT_NORMALIZED"},
+        {"query": f"{normalized_addr}, {bairro}", "type": "WITH_BAIRRO"} if bairro else None
+    ]
+    strategies = [s for s in strategies if s]
 
-    # Execução
+    # ---- EXECUÇÃO ----
     for strat in strategies:
         lat, lng, found_cep, found_street, status = await geocode_with_here(strat["query"])
         if status != "OK":
             continue
 
-        # --- Valida Quadra Encontrada ---
+        # ---- Dados encontrados ----
         found_q, found_l = extract_quadra_lote_values(found_street)
 
-        quadra_divergente = False
-        if target_q and found_q and target_q != found_q:
-            quadra_divergente = True
+        street_in  = extract_street_base(normalized_addr).upper()
+        street_out = extract_street_base(found_street).upper()
+        rua_match = (street_in in street_out) or (street_out in street_in)
 
-        # --- Validação de Rua ---
-        street_base_in = extract_street_base(normalized_addr).upper()
-        street_base_out = extract_street_base(found_street).upper()
-        name_match = (street_base_in in street_base_out) or (street_base_out in street_base_in)
+        quadra_div = (target_q and found_q and target_q != found_q)
+        rua_div    = not rua_match
 
-        # --- Validação de CEP ---
-        cep_clean = str(original_cep).replace("-", "").replace(".", "").strip()
+        cep_clean = original_cep.replace("-", "").replace(".", "").strip()
         cep_match = (found_cep and cep_clean and found_cep.replace("-", "") == cep_clean)
 
-        if (not name_match) and quadra_divergente:
+        # ============================================================
+        # 🔥 REGRA 1 — QUADRA divergente
+        #    Ignora estratégias tipo WITH_BAIRRO
+        #    Retorna PARTIAL_MATCH SEM discussão
+        # ============================================================
+        if quadra_div:
+            if strat["type"] == "WITH_BAIRRO":
+                continue  # ignora esta estratégia
             return lat, lng, True, "PARTIAL_MATCH"
 
-        # DECISÃO ORIGINAL
-        if name_match:
-            if quadra_divergente:
-                return lat, lng, True, "PARTIAL_QUADRA_MISMATCH"
-            else:
-                return lat, lng, False, strat["type"]
+        # ============================================================
+        # 🔥 REGRA 2 — RUA divergente
+        #    Ignora completamente CEP_MATCH
+        #    Retorna PARTIAL_MATCH
+        # ============================================================
+        if rua_div:
+            return lat, lng, True, "PARTIAL_MATCH"
 
-        if cep_match and not quadra_divergente:
+        # ---- Fluxo original ----
+        if rua_match:
+            return lat, lng, False, strat["type"]
+
+        if cep_match:
             return lat, lng, False, "CEP_MATCH"
 
-    # Estratégia de vizinhos se tudo falhar
+    # ---- Vizinhos (mantém igual) ----
     if target_q and target_l:
         try:
             l_num = int(target_l)
             base_rua = extract_street_base(normalized_addr)
 
             for offset in [1, -1, 2, -2]:
-                new_lote = l_num + offset
-                if new_lote <= 0:
+                new_l = l_num + offset
+                if new_l <= 0:
                     continue
 
-                q = f"{base_rua}, Quadra {target_q}, Lote {new_lote}"
+                q = f"{base_rua}, Quadra {target_q}, Lote {new_l}"
                 if bairro:
                     q += f", {bairro}"
 
@@ -589,6 +591,7 @@ async def find_best_location(normalized_addr: str, original_cep: str, bairro: st
                     continue
 
                 return lat, lng, True, f"PARTIAL_LOTE_{offset}"
+
         except:
             pass
 
