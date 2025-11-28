@@ -76,24 +76,306 @@ def extract_street_base(addr: str) -> str:
             cut = min(cut, pos)
     return addr[:cut].strip()
 
+# ============================================================
+# NORMALIZAÇÃO DO ENDEREÇO
+# ============================================================
 def normalize_address(raw, bairro):
-    # --- (MANTIVE SUA LÓGICA DE REGEX AQUI, APENAS OMITI PARA ECONOMIZAR ESPAÇO VISUAL) ---
-    # --- COLE AQUI O SEU CÓDIGO DA FUNÇÃO normalize_address ORIGINAL ---
-    # --- Vou assumir que ela retorna "RUA X, Q-L" ou similar ---
-    
-    # ... Insira o corpo da sua função normalize_address original ...
-    # Para fins de execução neste exemplo, usarei uma versão simplificada wrapper:
-    # No seu código final, MANTENHA A SUA VERSÃO COMPLETA.
+    """
+    Normaliza endereços ao padrão:
+    'RUA/AVENIDA, QUADRA-LOTE'
+    Mantém a lógica original; melhora robustez dos regex para capturar
+    RC / QUADRA / LOTE em formatos grudados, com pontuação e variações.
+    """
     try:
         if pd.isna(raw) or str(raw).strip() == "":
             return ""
-        
-        text = str(raw).strip().upper()
-        # ... (Sua logica complexa aqui) ...
-        # Retorno simplificado para o exemplo (mas use o seu):
-        return f"{text} {bairro or ''}".strip()
-    except:
-        return str(raw)
+
+        text = str(raw).strip()
+        bairro = "" if pd.isna(bairro) else str(bairro).strip()
+
+        # -------------------------------
+        # 1. Regra especial CONDOMÍNIO (mantida)
+        # -------------------------------
+        raw_combined = f"{text} {bairro}".upper()
+
+        ignore_cond = [
+            "CONDOMINIO DAS ESMERALDAS",
+            "CONDOMÍNIO DAS ESMERALDAS",
+            "CASA",
+            "SALA"
+        ]
+
+        if any(bad in raw_combined for bad in ignore_cond):
+            is_condominio = False
+        elif any(word in raw_combined for word in [
+            "COND",
+            "COND.",
+            "CONDOMINIO",
+            "CONDOMÍNIO",
+            "JARDINS LISBOA",
+            "BLOCO",
+            "APT",
+            "APTO",
+            "AP",
+            "APT.",
+            "APTO.",
+            "AP.",
+            "PRÉDIO",
+            "PREDIO",
+            "RESIDENCIAL MIAMI",
+            "EDIFÍCIO",
+            "EDIFICIO",
+            "ATIBAIA"
+        ]):
+            is_condominio = True
+        else:
+            is_condominio = False
+
+        # limpeza básica
+        text = re.sub(r'\s+', ' ', text)
+        text = text.replace('/', ' ')
+        text_upper = text.upper()
+
+        # -------------------------------------------------------------------------
+        # 1. Regra especial: Rua Fxx -> Rua F-xx  (mantida)
+        # -------------------------------------------------------------------------
+        if re.search(r"\bRUA\s+F(\d+)\b", text_upper):
+            text = re.sub(r"\b(RUA\s+F)(\d+)\b", r"\1-\2", text, flags=re.IGNORECASE)
+            text_upper = text.upper()
+
+        # -------------------------------------------------------------------------
+        # 1.1 Regras adicionais de normalização de ruas
+        # -------------------------------------------------------------------------
+
+        # Converte "R " para "RUA " para uniformizar (mantido)
+        text = re.sub(r"(^|\s)R\s+(?=[A-Z])", r"\1RUA ", text, flags=re.IGNORECASE)
+        text_upper = text.upper()
+
+
+        # ============================================================
+        # REGRA ESPECIAL — RUA MDV-x  (SEM ZERO-PAD)
+        # ============================================================
+        rua_mdv = re.search(
+            r"\bRUA\s+MDV\s*[- ]?\s*(\d{1,3})\b",
+            text_upper
+        )
+
+        if rua_mdv:
+            numero = rua_mdv.group(1).lstrip("0") or "0"
+            novo_padrao = f"RUA MDV-{numero}"
+
+            text = re.sub(
+                r"\bRUA\s+MDV\s*[- ]?\s*\d{1,3}\b",
+                novo_padrao,
+                text,
+                flags=re.IGNORECASE
+            )
+            text_upper = text.upper()
+
+
+        # ============================================================
+        # Captura “RUA AC3”, “RUA AC 3”, “RUA RI 15”, etc.
+        # *** EXCLUINDO MDV ***
+        # ============================================================
+        rua_codigo = re.search(
+            r"\bRUA\s+(?!MDV)([A-Z]{1,3})\s*[- ]?\s*(\d{1,3})\b",
+            text_upper
+        )
+
+        if rua_codigo:
+            codigo = rua_codigo.group(1).upper()
+            numero = rua_codigo.group(2).zfill(3)  # zero-pad → 3 dígitos
+            novo_padrao = f"RUA {codigo}-{numero}"
+
+            text = re.sub(
+                r"\bRUA\s+(?!MDV)[A-Z]{1,3}\s*[- ]?\s*\d{1,3}\b",
+                novo_padrao,
+                text,
+                flags=re.IGNORECASE
+            )
+            text_upper = text.upper()
+
+        # -------------------------------------------------------------------------
+        # 1.2 Regras adicionais: BL e RC
+        # -------------------------------------------------------------------------
+        text_upper = text.upper()
+
+        # BL (mantido)
+        rua_bl = re.search(r"\bRUA\s+BL\s*[- ]?\s*(\d{1,3})\b", text_upper)
+        rua_bl_alt = re.search(r"\bR\s+BL\s*[- ]?\s*(\d{1,3})\b", text_upper)
+
+        if rua_bl or rua_bl_alt:
+            numero = (rua_bl.group(1) if rua_bl else rua_bl_alt.group(1)).zfill(3)
+            novo_padrao = f"RUA BL-{numero}"
+            text = re.sub(
+                r"\b(?:RUA|R)\s+BL\s*[- ]?\s*\d{1,3}\b",
+                novo_padrao,
+                text,
+                flags=re.IGNORECASE
+            )
+            text_upper = text.upper()
+
+        # RC — tornar captura robusta e aplicar zero-pad de 3 dígitos
+        rc = re.search(r"\b(?:RUA|R)\s+RC\s*[- ]?\s*(\d{1,3})\b", text_upper)
+        if rc:
+            numero = rc.group(1).lstrip("0") or "0"
+            numero = numero.zfill(3)  # aplicar zero-pad para RC também
+            novo_padrao = f"RUA RC-{numero}"
+
+            text = re.sub(
+                r"\b(?:RUA|R)\s+RC\s*[- ]?\s*\d{1,3}\b",
+                novo_padrao,
+                text,
+                flags=re.IGNORECASE
+            )
+            text_upper = text.upper()
+
+
+        # ------------------------------- (mantido)
+        # Regra nova: converter "Rua <numero>" para extenso (mantido)
+        # -------------------------------
+        m_rua_num = re.match(r"^RUA\s+(\d+)\b", text_upper)
+        if m_rua_num:
+            num_rua = int(m_rua_num.group(1))
+            def extenso(n):
+                unidades = ["","um","dois","três","quatro","cinco","seis","sete","oito","nove"]
+                especiais = {"10":"dez","11":"onze","12":"doze","13":"treze","14":"quatorze","15":"quinze",
+                            "16":"dezesseis","17":"dezessete","18":"dezoito","19":"dezenove"}
+                dezenas = ["","","vinte","trinta","quarenta","cinquenta","sessenta","setenta","oitenta","noventa"]
+                n = str(n)
+                v = int(n)
+                if v < 10:
+                    return unidades[v]
+                if n in especiais:
+                    return especiais[n]
+                if v % 10 == 0:
+                    return dezenas[v//10]
+                d = v//10
+                u = v%10
+                return f"{dezenas[d]} e {unidades[u]}"
+
+            texto_extenso = extenso(num_rua).capitalize()
+            text = re.sub(r"^RUA\s+\d+", f"Rua {texto_extenso}", text, flags=re.IGNORECASE)
+            text_upper = text.upper()
+
+        # -------------------------------------
+        # 2. NOVAS REGRAS para QUADRA e LOTE (robustas)
+        # -------------------------------------
+        quadra = None
+        lote   = None
+
+        # QUADRA: aceitar Q, QD, Qd., QDR, QUADRA, Q23, Qd7, Quadra 8lote 8 (pontos e sem espaço)
+        q_match = re.search(
+            r"""
+            \b
+            Q
+            (?:        
+                U?A?D?R?A?       
+                |UA             
+                |S               
+                |UANDRA          
+            )?
+            \.?
+            \s*[:,.\- ]?\s*
+            ([A-Z]?\d{1,3}[A-Z]?)
+            """,
+            text_upper,
+            flags=re.VERBOSE
+        )
+
+        # LOTE: aceitar L, LT, LOTE, Lt01, lote8, L01, com/sem ponto
+        l_match = re.search(
+            r"""
+            \b
+            L
+            (?:T|TE|OTE)?   # LT, LTE, LOTE
+            \.?
+            \s*[:,.\- ]?\s*
+            ([A-Z]?\d{1,3}[A-Z]?)
+            """,
+            text_upper,
+            flags=re.VERBOSE
+        )
+
+        # -------------------------
+        # EXTRAÇÃO DA QUADRA
+        # -------------------------
+        if q_match:
+            raw = q_match.group(1) or ""
+            digits = re.sub(r"[^0-9]", "", raw)
+            if digits:
+                quadra = digits.lstrip("0") or "0"
+
+        # -------------------------
+        # EXTRAÇÃO DO LOTE
+        # -------------------------
+        if l_match:
+            raw = l_match.group(1) or ""
+            digits = re.sub(r"[^0-9]", "", raw)
+            if digits:
+                lote = digits.lstrip("0") or "0"
+
+        # -------------------------------------------------------------------------
+        # 3. Fallback para padrão "15-20" (mantido)
+        # -------------------------------------------------------------------------
+        if not (quadra and lote):
+            fb = re.search(r"\b([0-9]+)\s*-\s*([0-9]+)\b", text_upper)
+            if fb:
+                quadra = quadra or (fb.group(1).lstrip("0") or "0")
+                lote   = lote   or (fb.group(2).lstrip("0") or "0")
+
+        # -------------------------------------------------------------------------
+        # 4. Definição da rua (com proteção anti None)
+        # -------------------------------------------------------------------------
+        cut_index = len(text)
+
+        # Marcadores que indicam o fim do nome da rua
+        separators = [",", " - ", " Nº", " NUMERO", " CASA", " APT", " APTO"]
+
+        for sep in separators:
+            idx = text_upper.find(sep)
+            if idx != -1 and idx < cut_index:
+                cut_index = idx
+
+        # Posições onde começam as informações de quadra/lote (se detectados)
+        regex_positions = [
+            (q_match.start() if q_match else None),
+            (l_match.start() if l_match else None)
+        ]
+
+        for pos in regex_positions:
+            if pos is not None and pos < cut_index:
+                cut_index = pos
+
+        street = text[:cut_index].strip().rstrip(" ,-./")
+
+        # -------------------------------------------------------------------------
+        # 5. Sanitização (mantida)
+        # -------------------------------------------------------------------------
+        invalid = {"0", "00", "SN", "S/N", "NULL"}
+
+        if quadra and str(quadra).upper() in invalid:
+            quadra = None
+
+        if lote and str(lote).upper() in invalid:
+            lote = None
+
+        # ============================================================
+        # 7. REGRA FINAL — Se é condomínio, força o nome da rua
+        # ============================================================
+        if is_condominio:
+            return "Condominio"
+
+        # ============================================================
+        # 8. Retorno normal (rua padrão)
+        # ============================================================
+        if quadra and lote:
+            return f"{street}, {quadra}-{lote}"
+
+        return ""
+
+    except Exception as e:
+        return f"[ERRO-NORMALIZE] {str(e)}"
 
 # ============================================================
 # GEOCODING HERE (OTIMIZADO)
