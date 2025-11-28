@@ -498,11 +498,11 @@ def extract_quadra_lote_values(text):
 async def find_best_location(normalized_addr: str, original_cep: str, bairro: str, original_raw: str):
     # Parsing IA (fallback)
     ai_parsed = None
-    if GOOGLE_API_KEY:
-        try:
-            ai_parsed = await parse_address_with_ai(original_raw)
-        except:
-            pass
+    #if GOOGLE_API_KEY:
+        #try:
+            #ai_parsed = await parse_address_with_ai(original_raw)
+        #except:
+            #pass
 
     # ---- TARGET QUADRA E LOTE ----
     target_q, target_l = extract_quadra_lote_values(original_raw)
