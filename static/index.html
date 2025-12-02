@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Route Planner</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://js.api.here.com/v3/3.1/mapsjs-core.js"></script>
+  <script src="https://js.api.here.com/v3/3.1/mapsjs-service.js"></script>
+  <script src="https://js.api.here.com/v3/3.1/mapsjs-ui.js"></script>
+  <script src="https://js.api.here.com/v3/3.1/mapsjs-mapevents.js"></script>
+  <link rel="stylesheet" type="text/css" href="https://js.api.here.com/v3/3.1/mapsjs-ui.css" />
+
+  <style>
+    .table-container { max-height: 60vh; overflow-y: auto; position: relative; }
+    thead th { position: sticky; top: 0; z-index: 20; background-color: #e5e7eb; }
+    thead tr:nth-child(2) th { top: 45px; z-index: 20; }
+    tfoot { position: sticky; bottom: 0; z-index: 20; background-color: #f3f4f6; border-top: 2px solid #d1d5db; }
+    .progress-bar-fill { transition: width 0.3s ease; }
+  </style>
+    <script>
+    tailwind.config = {
+        darkMode: 'class'
+    }
+    </script>
+
+</head>
+
+<body class="bg-gray-100 dark:bg-gray-800 dark:text-gray-200 h-screen w-screen flex flex-col">
+
+    <header class="bg-blue-700 dark:bg-gray-900 text-white p-4 shadow-md flex items-center justify-between">
+        
+        <!-- LOGO + TÍTULO -->
+        <div class="flex items-center gap-3">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9 20l-5.447-2.724A2 2 0 013 15.382V6a2 2 0 012-2h1m5 0h1a2 2 0 012 2v7.382a2 2 0 01-1.553 1.894L9 20zm0 0h6" />
+            </svg>
+
+            <h1 class="text-2xl font-bold tracking-wide">Route Planner</h1>
+        </div>
+
+        <div class="flex items-center gap-3">
+
+            <!-- BOTÃO DE AJUDA -->
+            <button id="helpButton" onclick="openHelpPopup()"
+                    class="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition">
+                <svg xmlns="http://www.w3.org/2000/svg"
+                    class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M8 10a4 4 0 118 0c0 1.657-1.333 3-3 3h-1v1m0 4h.01" />
+                </svg>
+            </button>
+
+            <!-- BOTÃO DARK MODE -->
+            <button id="toggleTheme"
+                    class="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition">
+                <svg id="themeIcon" xmlns="http://www.w3.org/2000/svg"
+                    class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                </svg>
+            </button>
+
+        </div>
+
+    </header>
+
+    <main class="flex-1 overflow-auto p-6">
+        <div class="w-full bg-white dark:bg-gray-900 shadow rounded-xl p-6">
+
+            <!-- UPLOAD MODERNO -->
+            <div class="mb-6">
+                <label id="fileTitle" class="block text-gray-800 mb-3 text-lg font-semibold tracking-wide">
+                    Selecione um arquivo .xlsx
+                </label>
+
+                <div class="flex flex-col md:flex-row items-start md:items-center gap-4 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 shadow-sm rounded-xl p-4">
+
+                    <!-- INPUT REAL (OCULTO) -->
+                    <input id="fileInput" type="file" accept=".xlsx" class="hidden">
+
+                    <!-- BOTÃO IMPORTAR -->
+                    <label for="fileInput"
+                        class="flex items-center gap-2 bg-gray-100 border border-gray-300 px-5 py-3 rounded-lg cursor-pointer 
+                            hover:bg-gray-200 hover:border-gray-400 transition shadow-sm text-gray-800 font-medium">
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-600" fill="none"
+                            viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 4v16h16V4H4zm4 4h8v2H8V8z" />
+                        </svg>
+                        Importar arquivo
+                    </label>
+
+                    <!-- NOME DO ARQUIVO -->
+                    <span id="fileName" class="text-gray-600 text-sm font-medium italic">
+                        Nenhum arquivo escolhido
+                    </span>
+
+                    <!-- BOTÃO ENVIAR -->
+                    <button id="btnUpload"
+                            class="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold 
+                                hover:bg-blue-700 active:scale-95 transition shadow-md ml-auto">
+
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-white" fill="none"
+                            viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M5 12h14m-7-7v14" />
+                        </svg>
+                        Enviar
+                    </button>
+
+                </div>
+
+                <!-- PROGRESSO -->
+                <div id="progressContainer" class="mt-6 hidden">
+                    <div class="flex justify-between mb-2">
+                        <span id="progressStatus" class="text-sm font-medium text-blue-700">Enviando...</span>
+                        <span id="progressPercent" class="text-sm font-medium text-blue-700">0%</span>
+                    </div>
+
+                    <div class="w-full bg-gray-200 rounded-full h-4 shadow-inner overflow-hidden">
+                        <div id="progressBar" class="bg-blue-600 h-4 rounded-full progress-bar-fill" style="width:0"></div>
+                    </div>
+                </div>
+        </div>
+
+        <!-- RESULTADO -->
+        <div id="result" class="mt-8 hidden">
+            
+            <div class="flex justify-between items-center mb-4 border-b pb-2">
+                <h2 id="resultTitle" class="text-2xl font-semibold text-gray-800">
+                    Resultado da Análise
+                </h2>
+
+                <button id="btnExport" onclick="openPopup()"
+                        class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded flex items-center shadow-sm">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Exportar
+                </button>
+            </div>
+
+            <div class="border border-gray-300 dark:border-gray-700 rounded-lg shadow-sm bg-white dark:bg-gray-900 overflow-hidden mt-4">
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm border-collapse text-gray-800 dark:text-gray-200" id="dataTable">
+                        
+                        <thead id="tableHead" class="bg-gray-200 dark:bg-gray-800 text-gray-800 dark:text-gray-100 uppercase font-bold">
+                        </thead>
+
+                        <tbody id="tableBody" class="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+                        </tbody>
+
+                        <tfoot class="text-gray-700 dark:text-gray-300 font-semibold bg-gray-100 dark:bg-gray-800 border-t border-gray-300 dark:border-gray-600">
+                            <tr>
+                                <td colspan="100%" class="px-4 py-3 text-right">
+                                    <div class="flex justify-end gap-6 flex-wrap text-xs md:text-sm">
+
+                                        <span>
+                                            Total:
+                                            <span id="statTotalLines" class="text-blue-600 dark:text-blue-400 ml-1">0</span>
+                                        </span>
+
+                                        <span>
+                                            Erros:
+                                            <span id="statNotFound" class="text-red-600 dark:text-red-400 ml-1">0</span>
+                                        </span>
+
+                                        <span>
+                                            Parciais:
+                                            <span id="statPartial" class="text-yellow-600 dark:text-yellow-400 ml-1">0</span>
+                                        </span>
+
+                                        <span>
+                                            Condomínios:
+                                            <span id="statCond" class="text-purple-600 dark:text-purple-400 ml-1">0</span>
+                                        </span>
+
+                                    </div>
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+
+            <div class="mt-8">
+                <details>
+                    <summary class="cursor-pointer text-gray-500 hover:text-gray-700">Ver JSON Bruto</summary>
+                    <pre id="jsonOutput" class="mt-2 bg-gray-900 text-green-300 p-4 rounded-lg text-xs overflow-auto max-h-40"></pre>
+                </details>
+            </div>
+
+        </div>
+        </div>
+    </main>
+
+    <!-- POPUP -->
+    <div id="exportPopup" class="fixed inset-0 bg-black/50 dark:bg-black/60 backdrop-blur-lg hidden items-center justify-center z-[9999] transition-all">
+        <div class="bg-white p-6 rounded-xl shadow-xl w-80">
+        <h2 class="text-xl font-bold mb-4 text-gray-800">Exportar dados</h2>
+
+        <button id="popupExportExcel"
+                class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded mb-3">
+            Exportar Excel
+        </button>
+
+        <button id="popupExportCircuit"
+                class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded">
+            Exportar para Circuit
+        </button>
+
+        <button onclick="closePopup()"
+                class="w-full mt-4 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded">
+            Cancelar
+        </button>
+        </div>
+    </div>
+
+    <!-- POPUP SOBRE O SOFTWARE -->
+    <div id="infoPopup" class="fixed inset-0 bg-black/50 dark:bg-black/60 backdrop-blur-lg hidden items-center justify-center z-[9999] transition-all">
+        <div class="bg-white p-7 rounded-xl shadow-2xl w-96 relative border border-gray-300">
+
+            <!-- Botão fechar -->
+            <button onclick="closeInfoPopup()" 
+                    class="absolute top-3 right-3 text-gray-500 hover:text-gray-700 text-xl font-bold">
+                ×
+            </button>
+
+            <!-- LOGO -->
+            <div class="flex flex-col items-center mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-14 h-14 text-blue-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M9 20l-5.447-2.724A2 2 0 013 15.382V6a2 2 0 012-2h1m5 0h1a2 2 0 012 2v7.382a2 2 0 01-1.553 1.894L9 20zm0 0h6" />
+                </svg>
+
+                <h2 class="text-2xl font-bold text-gray-800 mt-2 tracking-wide">Route Planner</h2>
+            </div>
+
+            <!-- INFO -->
+            <div class="text-gray-700 text-sm space-y-2">
+                <p><span class="font-semibold">Descrição:</span><br>
+                Software profissional para otimização e planejamento inteligente de rotas de entrega.
+                </p>
+
+                <p><span class="font-semibold">Desenvolvedor:</span><br>
+                Danilo Carneiro Neri
+                </p>
+
+                <p><span class="font-semibold">Contato:</span><br>
+                (62) 99625-0706
+                </p>
+
+                <p><span class="font-semibold">Email:</span><br>
+                danilo.carneironeri@gmail.com
+                </p>
+            </div>
+
+            <button onclick="closeInfoPopup()" 
+                    class="w-full mt-6 bg-blue-700 hover:bg-blue-800 text-white font-semibold py-2 rounded-lg">
+                Fechar
+            </button>
+        </div>
+    </div>
+
+    <!-- POPUP DE AJUDA -->
+    <div id="helpPopup"
+        class="fixed inset-0 bg-black/50 dark:bg-black/60 backdrop-blur-lg hidden items-center justify-center z-[9999] transition-all">
+
+        <div class="bg-white dark:bg-gray-900 p-8 rounded-2xl shadow-2xl w-[45rem] max-h-[90vh] overflow-y-auto border border-gray-300 dark:border-gray-700 relative">
+
+            <!-- FECHAR -->
+            <button onclick="closeHelpPopup()"
+                class="absolute top-4 right-4 text-gray-500 hover:text-gray-300 text-2xl font-bold">
+                ×
+            </button>
+
+            <!-- TÍTULO + LOGO -->
+            <div class="flex items-center gap-3 mb-6">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-12 h-12 text-blue-700 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M9 20l-5.447-2.724A2 2 0 013 15.382V6a2 2 0 012-2h1m5 0h1a2 2 0 012 2v7.382a2 2 0 01-1.553 1.894L9 20zm0 0h6" />
+                </svg>
+
+                <h2 class="text-2xl font-bold text-gray-800 dark:text-gray-100 tracking-wide">
+                    Detalhes de funcionamento do sistema:
+                </h2>
+            </div>
+
+            <!-- TEXTO -->
+            <div class="space-y-6 text-gray-700 dark:text-gray-300 text-[0.95rem] leading-relaxed">
+
+                <!-- BLOCO 1: IMPORTAÇÃO -->
+                <p>
+                    Clique no botão <b>Importar arquivo</b> e selecione o arquivo disponibilizado pela Shopee.
+                    <br><br>
+                    Após escolher o arquivo, clique no botão <b>Enviar</b>.
+                </p>
+
+                <!-- ALERTA WARNING -->
+                <div class="flex gap-3 bg-yellow-100 dark:bg-yellow-900 border-l-4 border-yellow-500 p-4 rounded-md shadow-sm">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-yellow-600 dark:text-yellow-300 mt-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L4.206 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <div>
+                        <p class="font-semibold text-yellow-700 dark:text-yellow-200">Atenção</p>
+                        <p>
+                            O envio de arquivos não autorizados pode causar falhas no sistema.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- BLOCO 2: ERRO AO PROCESSAR -->
+                <p>
+                    <b>Observação:</b> caso o sistema apresente a mensagem <b>"erro ao processar"</b>,
+                    abra o endereço:
+                    <br>
+                    <a href="https://prototype-solution.onrender.com/" target="_blank"
+                    class="text-blue-600 dark:text-blue-400 underline">
+                        https://prototype-solution.onrender.com/
+                    </a>
+                    <br><br>
+                    Certifique-se de que aparece a mensagem:
+                    <span class="italic">{"status":"ok","message":"Backend online"}</span>.
+                    <br><br>
+                    Se aparecer apenas a página de carregamento do Render, aguarde alguns instantes.
+                    <br><br>
+                    Para casos específicos, entre em contato com o desenvolvedor responsável.
+                </p>
+
+                <!-- BLOCO 3: VARREDURA -->
+                <p>
+                    Ao enviar o arquivo, o sistema fará uma varredura completa, analisando os endereços informados
+                    e realizando cruzamento de dados para localizar a posição correta.
+                </p>
+
+                <!-- BLOCO 4: COLUNAS GERADAS -->
+                <p>
+                    O sistema cria duas colunas principais:
+                    <br>
+                    <b>Normalized_Address</b>: padronização do endereço.
+                    <br>
+                    <b>Geo_Latitude</b>: coluna base contendo latitude e longitude retornadas após a análise.
+                </p>
+
+                <p><b>A coluna <span class="text-blue-700 dark:text-blue-300">Geo_Latitude</span> é a mais importante.</b></p>
+
+                <!-- CONDOMÍNIO -->
+                <div>
+                    <p class="font-semibold">Informação retornada: <span class="bg-purple-100 text-purple-900 dark:bg-purple-900 dark:text-purple-200 font-bold px-2 py-1 rounded">Condomínio</span></p>
+                    <p>
+                        Endereços identificados como condomínio são exibidos nesse formato.
+                    </p>
+                </div>
+
+                <!-- PARTIAL -->
+                <div>
+                    <p class="font-semibold">Informação retornada: 
+                        <span class="bg-yellow-100 text-yellow-900 dark:bg-yellow-900 dark:text-yellow-200 font-bold px-2 py-1 rounded">
+                            Latitude e Longitude (match parcial)
+                        </span>
+                    </p>
+
+                    <p>
+                        Significa que o endereço foi encontrado parcialmente, podendo indicar:
+                    </p>
+                    <ul class="list-disc ml-6">
+                        <li>Local próximo ao endereço original</li>
+                        <li>CEP divergente</li>
+                        <li>Endereço incorreto no arquivo</li>
+                    </ul>
+
+                    <div class="flex gap-3 bg-yellow-100 dark:bg-yellow-900 border-l-4 border-yellow-500 p-4 rounded-md shadow-sm mt-3">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-yellow-600 dark:text-yellow-300 mt-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L4.206 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        <div>
+                            <p class="font-semibold text-yellow-700 dark:text-yellow-200">Atenção</p>
+                            <p>
+                                O sistema é um facilitador. Os endereços retornados devem ser
+                                validados antes de incluir no Circuit.
+                                <br>
+                                (Campos editáveis estão disponíveis para ajuste manual).
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- NOT FOUND -->
+                <div>
+                    <p class="font-semibold">Informação retornada: 
+                        <span class="text-red-600 font-bold bg-red-50 dark:bg-red-900 dark:text-red-300 px-2 py-1 rounded">
+                            Não encontrado
+                        </span>
+                    </p>
+
+                    <p>
+                        Significa que o endereço não foi encontrado com base nas informações fornecidas.
+                        (Campo torna-se editável para ajuste manual).
+                    </p>
+                </div>
+
+                <!-- EXPORTAÇÃO -->
+                <div>
+                    <p class="font-semibold text-lg">Botão Exportar:</p>
+                    <ul class="list-disc ml-6">
+                        <li><b>Exportar Excel</b>: exporta todos os dados da planilha + colunas criadas pelo sistema.</li>
+                        <li><b>Exportar para Circuit</b>: exporta apenas os dados relevantes para montagem de rota no aplicativo Circuit.</li>
+                    </ul>
+
+                    <p class="mt-2">
+                        Uma coluna adicional chamada <b>Observações</b> é criada contendo:
+                        sequência do pacote + quadra e lote.
+                    </p>
+                </div>
+
+                <!-- FOOTER -->
+                <p>
+                    <b>Rodapé:</b> Ao clicar em <i>"Developed by Danilo Carneiro"</i> você terá acesso ao contato do
+                    desenvolvedor responsável. Entre em contato para suporte ou esclarecimentos.
+                </p>
+
+            </div>
+
+        </div>
+    </div>
+
+    <div id="mapModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+        
+        <div class="bg-white rounded-lg shadow-xl w-11/12 md:w-3/4 lg:w-2/3 p-6 relative flex flex-col max-h-[90vh]">
+            
+            <div class="flex justify-between items-center mb-4 shrink-0">
+                <h3 class="text-xl font-bold text-gray-800">Correção Manual de Endereço</h3>
+                <button id="btnCloseModal" class="text-gray-500 hover:text-red-600 text-3xl font-bold leading-none p-2">&times;</button>
+            </div>
+
+            <div class="mb-4 shrink-0">
+                <p class="text-xs text-gray-500 mb-1">Endereço Original:</p>
+                <p id="modalAddressLabel" class="font-medium text-gray-800 bg-gray-100 p-2 rounded border border-gray-200"></p>
+            </div>
+
+            <div class="flex gap-2 mb-4 shrink-0">
+                <input type="text" id="manualSearchInput" 
+                    class="flex-1 border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                    placeholder="Não achou? Digite rua, número e cidade..." 
+                />
+                <button id="btnManualSearch" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold transition">
+                    Buscar
+                </button>
+            </div>
+
+            <div class="relative w-full h-[400px] bg-gray-200 rounded border border-gray-300 overflow-hidden shrink-0">
+                <div id="mapContainer" class="w-full h-full"></div>
+            </div>
+
+            <div class="mt-4 flex justify-between items-center shrink-0">
+                <div class="text-sm text-gray-600">
+                    Coordenada: <span id="selectedCoords" class="font-mono font-bold text-blue-700">---</span>
+                </div>
+                <button id="btnConfirmLocation" class="bg-green-600 text-white px-6 py-2 rounded shadow hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition" disabled>
+                    Confirmar Correção
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <footer onclick="openInfoPopup()" 
+            class="bg-gray-200 dark:bg-gray-900 text-gray-700 dark:text-gray-300 text-center py-4 mt-8 border-t cursor-pointer hover:bg-gray-300 dark:hover:bg-gray-800 transition relative z-30">
+        <p class="text-sm tracking-wide">
+            Developed by <span class="font-semibold underline">Danilo Carneiro</span>
+        </p>
+    </footer>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script type="module" src="js/main.js"></script>
+
+</body>
+</html>

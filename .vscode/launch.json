@@ -1,0 +1,22 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: FastAPI",
+            "type": "python",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "main:app",
+                "--reload",
+                "--port",
+                "8000"
+            ],
+            "jinja": true,
+            "justMyCode": true,
+            "env": {
+                "HERE_API_KEY": "BJYVOFTZ4a9ORwZj8G3MB4e_jG2v5WJECQmIeHUxXvw"
+            }
+        }
+    ]
+}
