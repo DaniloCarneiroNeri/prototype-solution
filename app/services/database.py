@@ -9,11 +9,35 @@ else:
 
 def salvar_endereco_encontrado(dados: dict):
     if not supabase:
-        return 
+        return
 
     try:
-        response = supabase.table("enderecos_processados").insert(dados).execute()
+        endereco_norm = dados.get("endereco_normalizado")
+
+        if not endereco_norm:
+            print("Dados sem endereco_normalizado")
+            return None
+        
+        existente = (
+            supabase.table("enderecos_processados")
+            .select("*")
+            .eq("endereco_normalizado", endereco_norm)
+            .execute()
+        )
+
+        if existente.data and len(existente.data) > 0:
+            return {
+                "mensagem": "Endereço já existe",
+                "registro": existente.data[0]
+            }
+        response = (
+            supabase.table("enderecos_processados")
+            .insert(dados)
+            .execute()
+        )
         return response
+
     except Exception as e:
         print(f"Erro ao salvar no Supabase: {e}")
         return None
+    
