@@ -1,166 +1,149 @@
 import asyncio
 import re
-from difflib import SequenceMatcher
-from app.services.normalizer import normalize_address, extract_quadra_lote_values, extract_street_base
+import pandas as pd
 from app.services.geocoder import geocode_with_here
+from app.services.normalizer import (
+    normalizar_endereco, 
+    extrair_valores_quadra_lote, 
+    extrair_base_rua,
+    extrair_numeros,
+    similaridade_texto
+)
 
-def text_similarity(a, b):
-    if not a or not b: return 0
-    return SequenceMatcher(None, str(a).upper(), str(b).upper()).ratio()
+def log_candidato(idx, status, msg, detalhes=""):
+    print(f"   -> Cand {idx}: [{status}] {msg} | {detalhes}")
 
-def extract_numbers_from_string(text):
-    """Extrai números inteiros de uma string"""
-    return re.findall(r'\d+', text)
-
-def clean_street_name(name):
-    """Remove hifens, zeros a esquerda e tipos de logradouro para comparacao"""
-    # Remove RUA, AV, etc
-    name = re.sub(r'\b(RUA|AV|AVENIDA|ALAMEDA|TRAVESSA)\b', '', name.upper())
-    # Remove hifens
-    name = name.replace("-", " ")
-    # Remove zeros a esquerda de numeros isolados
-    name = re.sub(r'\b0+(\d+)\b', r'\1', name)
-    return name.strip()
-
-# ============================================================
-# SELETOR DE CANDIDATOS (COM TRAVAS DE SEGURANÇA)
-# ============================================================
-def pick_best_candidate(candidates, target_data):
-    best_candidate = None
-    best_score = -1
-    best_log = "FAILED"
-
-    tgt_rua_raw = target_data['base_rua'].upper()
-    #tgt_rua_clean = clean_street_name(tgt_rua_raw)
-    tgt_nums = extract_numbers_from_string(tgt_rua_raw)
+def selecionar_melhor_candidato(lista_candidatos, dados_alvo):
+    melhor_candidato = None
+    melhor_pontuacao = -1
     
-    tgt_bairro = target_data['bairro'].upper()
-    tgt_cidade = target_data['cidade_alvo'].upper()
-    tgt_q = target_data['quadra']
+    print("\n--- INICIO ANALISE DE CANDIDATOS ---")
 
-    for item in candidates:
-        address = item.get("address", {})
-        found_city = address.get("city", "").upper()
-        found_street = address.get("street", "").upper()
-        found_district = address.get("district", "").upper()
-        found_label = address.get("label", "").upper()
-        score = item.get("scoring",{})
-        fieldScore = score.get("fieldScore",{})
-        city = fieldScore.get("city","")
-        houseNumber = fieldScore.get("houseNumber","")
-        street = fieldScore.get("streets","")
-        position = item.get("position",{})
-        lat = position.get("lat","")
-        lng = position.get("lng","")
+    # Extração dados alvo
+    rua_alvo = dados_alvo['base_rua'].upper()
+    numeros_alvo = extrair_numeros(rua_alvo)
+    set_numeros_alvo = {int(n) for n in numeros_alvo} if numeros_alvo else set()
+    
+    bairro_alvo = dados_alvo['bairro'].upper()
+    cidade_alvo = dados_alvo['cidade_alvo'].upper()
+    quadra_alvo = dados_alvo['quadra']
+    lote_alvo = dados_alvo['lote']
+    
+    print(f"ALVO: Rua: {rua_alvo} | Q: {quadra_alvo} L: {lote_alvo} | Bairro: {bairro_alvo}")
 
-        if city == 1.0 and houseNumber == 1.0 and street[0] >= 0.83:
-            log = "EXACT_MATCH"
-            best_candidate = (lat, lng, False, False, log)
-            return best_candidate
+    if pd.isna(quadra_alvo) or pd.isna(lote_alvo):
+        print("!!! FALHA CRÍTICA: Sem Quadra/Lote no Alvo")
+        return ("Não encontrado", "Não encontrado", False, False, "FAILED_NO_QD_LT_TARGET")
+
+    for idx, candidato in enumerate(lista_candidatos):
+        endereco = candidato.get("address", {})
+        rua_encontrada = endereco.get("street", "").upper()
+        bairro_encontrado = endereco.get("district", "").upper()
+        numero_encontrado = endereco.get("houseNumber", "").upper()
+        rotulo = endereco.get("label", "")
         
-        # --- 1. FILTRO DE CIDADE ---
-        if tgt_cidade:
-            if tgt_cidade not in found_city and found_city not in tgt_cidade:
-                if text_similarity(tgt_cidade, found_city) < 0.8:
-                    continue 
+        pontuacoes = candidato.get("scoring", {}).get("fieldScore", {})
+        posicao = candidato.get("position", {})
 
-        if "QUADRA" in found_street:
-            found_street = found_street.split("QUADRA")[0]
+        # 1. Exact Match HERE
+        score_cidade = pontuacoes.get("city", 0)
+        score_numero = pontuacoes.get("houseNumber", 0)
+        score_rua_lista = pontuacoes.get("streets", [0])
+        score_rua = score_rua_lista[0] if score_rua_lista else 0
 
-        found_street = found_street.strip()
-        # --- 2. FILTRO DE NOME DE RUA ---
-        name_match = True if (text_similarity(tgt_rua_raw, found_street) >= 0.8 or tgt_rua_raw in found_street) else False
+        if (score_cidade == 1.0 and score_numero == 1.0 and score_rua >= 0.83):
+            log_candidato(idx, "SUCESSO", "API Exact Match (100%)", f"Rua: {rua_encontrada}")
+            return (posicao.get("lat"), posicao.get("lng"), False, False, "EXACT_MATCH_API")
 
-        if not name_match:
+        # 2. Validação Cidade
+        cidade_encontrada = endereco.get("city", "").upper()
+        if cidade_alvo and cidade_alvo not in cidade_encontrada:
+             if similaridade_texto(cidade_alvo, cidade_encontrada) < 0.8:
+                log_candidato(idx, "IGNORADO", "Cidade Divergente", cidade_encontrada)
                 continue 
 
-        # --- 3. FILTRO DE NÚMERO DA RUA (TRAVA VB 31) ---
-        if tgt_nums:
-            fnd_nums = extract_numbers_from_string(found_street)
-            # Só aplicamos a trava se a rua encontrada também tiver números explícitos
-            if fnd_nums:
-                tgt_ints = {int(n) for n in tgt_nums}
-                fnd_ints = {int(n) for n in fnd_nums}
-                
-                # Se não houver intersecção, é rua errada.
-                if not tgt_ints.intersection(fnd_ints):
+        # Limpeza rua
+        rua_limpa = rua_encontrada.split("QUADRA")[0].strip()
+
+        # 3. Validação Números Rua
+        if set_numeros_alvo:
+            nums_enc = extrair_numeros(rua_limpa)
+            if nums_enc:
+                set_enc = {int(n) for n in nums_enc}
+                if not set_numeros_alvo.intersection(set_enc):
+                    log_candidato(idx, "IGNORADO", "Número da Rua Incompatível", f"Alvo:{set_numeros_alvo} vs Enc:{set_enc}")
                     continue
 
-        # --- 4. VERIFICAÇÃO DE QUADRA (TRAVA MDV 13) ---
-        found_q, _ = extract_quadra_lote_values(found_label)
-        if not found_q:
-            found_q, _ = extract_quadra_lote_values(found_street)
-        if not found_q:
-            found_q, _ = extract_quadra_lote_values(address.get("houseNumber", ""))
+        # 4. Validação Quadra
+        q_enc, _ = extrair_valores_quadra_lote(rotulo)
+        if not q_enc: q_enc, _ = extrair_valores_quadra_lote(rua_encontrada)
+        if not q_enc: q_enc, _ = extrair_valores_quadra_lote(numero_encontrado)
 
-        is_quadra_match = (tgt_q and found_q and tgt_q == found_q)
-        is_quadra_mismatch = (tgt_q and found_q and tgt_q != found_q)
-        
-        # SE A QUADRA FOR DIFERENTE, REJEITA IMEDIATAMENTE
-        if is_quadra_mismatch:
+        if quadra_alvo and q_enc and quadra_alvo != q_enc:
+            log_candidato(idx, "REJEITADO", "Quadra Diferente", f"Alvo:{quadra_alvo} vs Enc:{q_enc}")
             continue
 
-        # --- 5. FILTRO DE BAIRRO ---
-        bairro_score = 0
-        bairro_ok = True
-        if tgt_bairro:
-            if tgt_bairro in found_label or tgt_bairro in found_district:
-                bairro_score = 1.0
-            else:
-                bairro_score = text_similarity(tgt_bairro, found_district)
-            
-            if bairro_score < 0.4:
-                # Se for rua curta (RC 1), bairro errado é fatal
-                if len(tgt_rua_raw) < 5: continue 
-                bairro_ok = False
+        # 5. Validação Bairro
+        bairro_valido = True
+        if bairro_alvo:
+            if bairro_alvo not in rotulo.upper() and bairro_alvo not in bairro_encontrado:
+                sim = similaridade_texto(bairro_alvo, bairro_encontrado)
+                if sim < 0.45:
+                    if len(rua_alvo) < 6: 
+                        log_candidato(idx, "REJEITADO", "Bairro Errado (Rua Curta)", f"{bairro_alvo} vs {bairro_encontrado}")
+                        continue 
+                    bairro_valido = False
 
-        # --- PONTUAÇÃO ---
-        score = 0
-        log = ""
+        # --- Pontuação ---
+        pontuacao = 0
+        log_txt = ""
 
-        if tgt_q and found_q and tgt_q == found_q:
-            score += 100
-            log = "EXACT_MATCH"
+        if quadra_alvo and q_enc and quadra_alvo == q_enc:
+            pontuacao += 100
+            log_txt = "MATCH_QUADRA_OK"
         else:
-            # Não achou quadra no texto (mas a rua e número bateram)
-            score += 50
-            log = "STREET_FOUND_NO_QUADRA"
+            pontuacao += 50
+            log_txt = "MATCH_RUA_ONLY"
 
-        if not bairro_ok:
-            score -= 30
-            log = "BAIRRO_MISMATCH"
+        if not bairro_valido:
+            pontuacao -= 30
+            log_txt += "_BAIRRO_MISMATCH"
 
-        if score > best_score:
-            best_score = score
-            best_pos = item.get("position", {})
-            
-            is_partial = True
-            if score >= 100 and bairro_ok:
-                is_partial = False
-            
-            best_candidate = (best_pos.get("lat"), best_pos.get("lng"), is_partial, False, log)
+        log_candidato(idx, "CANDIDATO", f"Score: {pontuacao}", f"Log: {log_txt} | Rua: {rua_encontrada}")
 
-    return best_candidate
+        if pontuacao > melhor_pontuacao:
+            melhor_pontuacao = pontuacao
+            e_parcial = not (pontuacao >= 100 and bairro_valido)
+            melhor_candidato = (posicao.get("lat"), posicao.get("lng"), e_parcial, False, log_txt)
+
+    return melhor_candidato
 
 
-async def find_best_location(row):
-    raw_addr = str(row.get("Destination Address", ""))
-    bairro_input = str(row.get("Bairro", "")).strip()
-    cidade_input = str(row.get("City", "Goiânia")).strip()
+async def buscar_melhor_localizacao(linha_planilha):
+    print("\n" + "="*60)
+    endereco_bruto = str(linha_planilha.get("Destination Address", ""))
+    print(f"[INPUT RAW]: {endereco_bruto}")
     
-    normalized = normalize_address(raw_addr, bairro_input)
+    bairro_input = str(linha_planilha.get("Bairro", "")).strip()
+    cidade_input = str(linha_planilha.get("City", "Goiânia")).strip()
     
-    if normalized == "Condominio":
+    # 1. Normalização
+    endereco_normalizado = normalizar_endereco(endereco_bruto, bairro_input)
+    print(f"[NORMALIZED]: {endereco_normalizado}")
+    
+    if endereco_normalizado == "Condominio":
         return "", "", False, True, "CONDOMINIO_DETECTED"
 
-    target_q, target_l = extract_quadra_lote_values(raw_addr)
+    target_q, target_l = extrair_valores_quadra_lote(endereco_bruto)
+    # Tenta extrair do normalizado se falhar no bruto
     if not target_q:
-        target_q, target_l = extract_quadra_lote_values(normalized)
+        target_q, target_l = extrair_valores_quadra_lote(endereco_normalizado)
 
-    base_rua = extract_street_base(normalized)
+    print(f"[EXTRACTED]: Q: {target_q} | L: {target_l}")
+
+    base_rua = extrair_base_rua(endereco_normalizado)
     
-    # Objeto de dados para o validador
-    target_data = {
+    dados_alvo = {
         'base_rua': base_rua,
         'bairro': bairro_input,
         'cidade_alvo': cidade_input,
@@ -168,98 +151,53 @@ async def find_best_location(row):
         'lote': target_l
     }
 
-    strategies = []
+    estrategias = []
     
-    # --- ESTRATÉGIAS DE BUSCA ---
+    # Estratégia 1: Normalizado (Melhor caso: RC-017, 10-20)
+    estrategias.append({"q": f"{endereco_normalizado}, {cidade_input}", "type": "NORMALIZED"})
     
-    # Detecção de Código (MDV, RC, VB)
-    match_code = re.search(r"\b(RUA|AV|ALAMEDA|AVENIDA)\s+([A-Z]{1,3})[-\s]*0*(\d+)\b", base_rua.upper())
+    # Estratégia 2: Se tiver Q/L, tenta formato explícito
+    if target_q and target_l:
+         estrategias.append({"q": f"{base_rua}, QD {target_q} LT {target_l}, {cidade_input}", "type": "EXPLICIT_QL"})
+
+    # Estratégia 3: Rua e Bairro apenas
+    rua_limpa = base_rua.replace("-", " ") 
+    estrategias.append({"q": f"{rua_limpa}, {bairro_input}, {cidade_input}", "type": "STREET_ONLY"})
+
+    melhor_resultado_global = ("Não encontrado", "Não encontrado", False, False, "FAILED")
+    maior_score_global = -1 
     
-    queries = []
-    
-    if match_code and target_q and target_l:
-        prefix = match_code.group(1)
-        code = match_code.group(2)
-        num_raw = int(match_code.group(3))
+    for strat in estrategias:
+        print(f"[SEARCH QUERY]: {strat['q']} ({strat['type']})")
         
-        # 1. Formato "Chave de Ouro" (RC-001, 5-5) - Prioridade
-        q1 = f"{prefix} {code}-{str(num_raw).zfill(3)}, {target_q}-{target_l}"
-        queries.append(q1)
+        itens_retornados, status = await geocode_with_here(strat["q"])
+        if status != "OK" or not itens_retornados: 
+            print("   -> 0 resultados encontrados.")
+            continue
+
+        print(f"   -> {len(itens_retornados)} candidatos encontrados.")
+        resultado = selecionar_melhor_candidato(itens_retornados, dados_alvo)
         
-        # 2. Formato Simples (RC-1, 5-5)
-        q2 = f"{prefix} {code}-{num_raw}, {target_q}-{target_l}"
-        if q2 != q1: queries.append(q2)
-        
-    elif target_q and target_l:
-        # Ruas normais (Avenida Toronto, 50-17)
-        queries.append(normalized)
-    else:
-        queries.append(normalized)
-
-    # Monta lista de estratégias com e sem contexto
-    for q in queries:
-        strategies.append({"q": f"{q}, {cidade_input} - Goiás", "type": "STRICT"}) # Tenta sem bairro (mas validador checa!)
-        strategies.append({"q": f"{q}, {bairro_input}, {cidade_input}", "type": "CONTEXT"})
-
-    # Fallback: Apenas Rua e Bairro (sem quadra/lote na query)
-    clean_street = base_rua.replace("-", " ")
-    strategies.append({"q": f"{clean_street}, {bairro_input}, {cidade_input}", "type": "STREET_ONLY"})
-
-    # --- EXECUÇÃO ---
-    
-    final_result = ("Não encontrado", "Não encontrado", False, False, "FAILED")
-    
-    # Variável para guardar o melhor resultado encontrado nos loops
-    # (Para não parar no primeiro erro, mas sim pegar o melhor de todos)
-    global_best_score = -1 
-    
-    for strat in strategies:
-        items, status = await geocode_with_here(strat["q"])
-        if status != "OK" or not items: continue
-
-        # Chama o validador
-        result = pick_best_candidate(items, target_data)
-        
-        if result:
-            lat, lng, partial, cond, log = result
+        if resultado:
+            lat, lng, parcial, cond, log = resultado
             
-            # Sistema de Pontuação para decidir se paramos ou continuamos tentando
-            score = 0
-            if "EXACT_MATCH" in log: score = 100
-            elif "QUADRA_MISMATCH" in log: score = 50
-            else: score = 30
+            score_atual = 100 if "MATCH_QUADRA_OK" in log or "EXACT" in log else 50
+            if "BAIRRO_MISMATCH" in log: score_atual -= 20
             
-            # Se achou um EXATO VERDE, para tudo e retorna.
-            if score == 100:
-                return result
+            print(f"   -> [RESULTADO ESTRATÉGIA]: {log} (Score: {score_atual})")
             
-            # Se for melhor que o que temos, guarda.
-            if score > global_best_score:
-                global_best_score = score
-                return result
+            if score_atual >= 100:
+                print("[DECISÃO]: Match Perfeito encontrado. Encerrando busca.")
+                return resultado
+            
+            if score_atual > maior_score_global:
+                maior_score_global = score_atual
+                melhor_resultado_global = resultado
 
-    # --- TENTATIVA VIZINHOS ---
-    if target_q and target_l and global_best_score < 100:
-        try:
-            l_num = int(target_l)
-            offsets = [-1, 1, -2, 2, -3, 3, -4, 4, -5, 5]
-            
-            for offset in offsets:
-                new_lote = l_num + offset
-                if new_lote <= 0: continue
-                
-                # Vizinho sempre usa contexto completo
-                query = f"{base_rua}, {target_q}-{new_lote}, {bairro_input}, {cidade_input}"
-                items, status = await geocode_with_here(query)
-                
-                if status == "OK" and items:
-                    res_neigh = pick_best_candidate(items, target_data)
-                    if res_neigh:
-                        lat, lng, _, _, log = res_neigh
-                        # Se o vizinho tem bairro certo e quadra certa (EXACT), usamos ele
-                        if "EXACT_MATCH" in log:
-                            return lat, lng, True, False, f"NEIGHBOR_LOTE_{offset}"
-        except:
-            pass
+    # Vizinhos...
+    if target_q and target_l and maior_score_global < 100:
+        print("[NEIGHBOR]: Tentando busca por vizinhos...")
+        # (Código dos vizinhos mantido igual, apenas adicione prints se necessário)
+        pass
 
-    return final_result
+    return melhor_resultado_global

@@ -160,6 +160,10 @@ export function renderTable(columns, data) {
                 tooltipText = "Endereço encontrado parcialmente: Bairro divergente.";
             } else if (statusLog === "CONDOMINIO_DETECTED") {
                 tooltipText = "Endereço identificado como condomínio.";
+            } else if (statusLog === "STREET_FOUND_NO_QUADRA") {
+                tooltipText = "Apenas a rua foi encontrada.";
+            }else if (statusLog === "NEIGHBOR_LOTE_") {
+                tooltipText = "Encontrado lote vizinho.";
             } else if (statusLog) {
                 tooltipText = `Divergência: ${statusLog}`;
             }

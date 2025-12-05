@@ -27,7 +27,6 @@ document.addEventListener("DOMContentLoaded", () => {
     UI.setupTheme();
     UI.setupPopups();
     
-    // Listener de Input de Arquivo
     const fileInput = document.getElementById("fileInput");
     if (fileInput) {
         fileInput.addEventListener("change", function () {
@@ -36,12 +35,10 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // --- CORREÇÃO DO BOTÃO FECHAR ---
-    // Adicionamos o evento diretamente aqui e garantimos que ele sobreponha outros eventos
     const btnClose = document.getElementById("btnCloseModal");
     if (btnClose) {
         btnClose.addEventListener("click", (e) => {
-            e.preventDefault(); // Evita comportamentos estranhos
+            e.preventDefault(); 
             closeMapModal();
         });
     }
@@ -52,7 +49,6 @@ function closeMapModal() {
     const modal = document.getElementById("mapModal");
     if (modal) {
         modal.classList.add("hidden");
-        // Opcional: Limpar o mapa ou redefinir estado se necessário
     }
 }
 
@@ -206,10 +202,8 @@ window.openEditor = function(index) {
 function initMap() {
     const mapContainer = document.getElementById('mapContainer');
     
-    // Verificação de segurança
     if (!mapContainer) return;
 
-    // Limpa o container caso haja lixo de renderizações anteriores
     mapContainer.innerHTML = '';
 
     const defaultLayers = platform.createDefaultLayers();
@@ -233,7 +227,12 @@ function initMap() {
 }
 
 function updateMarker(coord) {
-    if (marker) map.removeObject(marker);
+    if (marker) {
+        const objects = map.getObjects();
+        if (objects.includes(marker)) {
+            map.removeObject(marker);
+        }
+    }
     marker = new H.map.Marker(coord);
     map.addObject(marker);
 }
@@ -265,7 +264,7 @@ if (btnConfirm) {
         const columns = globalData.length ? Object.keys(globalData[0]) : [];
         UI.renderTable(columns, globalData); 
 
-        closeMapModal(); // Usa a função de fechar corrigida
+        closeMapModal(); 
     };
 }
 

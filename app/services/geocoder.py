@@ -8,7 +8,7 @@ async def geocode_with_here(address: str):
     if not settings.HERE_API_KEY:
         return [], "NO_KEY"
 
-    if address in MEMORY_CACHE:
+    #if address in MEMORY_CACHE:
         return MEMORY_CACHE[address]
 
     # Força uso de + para espaço e , literal

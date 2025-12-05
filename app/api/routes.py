@@ -3,7 +3,7 @@ from fastapi.concurrency import run_in_threadpool
 import pandas as pd
 import asyncio
 from io import BytesIO
-from app.services.processor import find_best_location
+from app.services.processor import buscar_melhor_localizacao
 from app.core.config import settings
 
 router = APIRouter()
@@ -23,7 +23,7 @@ async def upload_file(file: UploadFile = File(...)):
 
     async def process_row(index, row):
         async with sem:
-            lat, lng, is_partial, is_cond, status = await find_best_location(row)
+            lat, lng, is_partial, is_cond, status = await buscar_melhor_localizacao(row)
             return {
                 "idx": index,
                 "Geo_Latitude": lat,
