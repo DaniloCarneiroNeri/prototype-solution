@@ -8,3 +8,4 @@ openpyxl
 google-generativeai
 openai
 aiofiles
+rapidfuzz
