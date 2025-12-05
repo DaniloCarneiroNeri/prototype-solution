@@ -2,48 +2,54 @@
 // EXPORTS.JS - Lógica de geração de arquivos
 // ============================================================
 
-export function exportToExcel(data, fileName, tableId = "dataTable") {
+export function exportToExcel(data, fileName) {
     if (!data || !data.length) return alert("Não há dados para exportar!");
     
-    // Verifica biblioteca
     if (typeof XLSX === 'undefined') return alert("Biblioteca XLSX não carregada.");
 
-    // 1. Tenta pegar a tabela HTML pelo SEU ID existente
-    const table = document.getElementById(tableId);
-    let dataToExport = data;
+    const sheetEncontrados = [];
+    const sheetParciais = [];
+    const sheetCondominios = [];
+    const sheetNaoEncontrados = [];
 
-    if (table) {
-        const tbody = table.querySelector("tbody");
-        // Pega apenas as linhas do corpo da tabela
-        const rows = tbody ? Array.from(tbody.querySelectorAll("tr")) : [];
+    data.forEach(item => {
+        const isCondo = item.Cond_Match;
+        const isPartial = item.Partial_Match;
+        
+        const hasLat = item.Geo_Latitude && item.Geo_Longitude !== "Não encontrado";
 
-        // Só aplica o filtro se a quantidade de linhas bater com os dados
-        // (Isso evita erros de sincronia)
-        if (rows.length === data.length) {
-            
-            dataToExport = data.filter((item, index) => {
-                const row = rows[index];
-                
-                // Verifica se a linha está oculta no CSS
-                const isHidden = row.style.display === "none" || row.classList.contains("hidden");
-                
-                // Se NÃO estiver oculta, incluímos no Excel
-                return !isHidden;
-            });
+        if (isCondo) {
+            sheetCondominios.push(item);
+        } else if (isPartial) {
+            sheetParciais.push(item);
+        } else if (hasLat) {
+            sheetEncontrados.push(item);
+        } else {
+            sheetNaoEncontrados.push(item);
+        }
+    });
+
+    const wb = XLSX.utils.book_new();
+
+    function appendIfData(dataset, sheetName) {
+        if (dataset.length > 0) {
+            const ws = XLSX.utils.json_to_sheet(dataset);
+            const safeName = sheetName.replace(/[:\\/?*\[\]]/g, " ").substring(0, 31);
+            XLSX.utils.book_append_sheet(wb, ws, safeName);
         }
     }
 
-    if (dataToExport.length === 0) {
-        return alert("Nenhum dado visível para exportar.");
+    appendIfData(sheetEncontrados, "Encontrados");
+    appendIfData(sheetParciais, "Encontrados Parcialmente");
+    appendIfData(sheetCondominios, "Condominios Identificados");
+    appendIfData(sheetNaoEncontrados, "Nao Encontrados - Erros"); 
+
+    if (wb.SheetNames.length === 0) {
+        return alert("Nenhum dado válido encontrado para gerar as abas.");
     }
 
-    console.log(`Exportando ${dataToExport.length} linhas.`); // Log para conferência
+    console.log(`Exportando arquivo com ${wb.SheetNames.length} abas.`);
 
-    // 2. Gera o Excel
-    const ws = XLSX.utils.json_to_sheet(dataToExport);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Dados");
-    
     XLSX.writeFile(wb, `${fileName}.xlsx`);
 }
 
