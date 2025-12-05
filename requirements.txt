@@ -9,3 +9,4 @@ google-generativeai
 openai
 aiofiles
 rapidfuzz
+supabase

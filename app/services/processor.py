@@ -2,6 +2,7 @@ import asyncio
 import re
 import pandas as pd
 from app.services.geocoder import geocode_with_here
+from app.services.database import salvar_endereco_encontrado
 from app.services.normalizer import (
     normalizar_endereco, 
     extrair_valores_quadra_lote, 
@@ -188,6 +189,13 @@ async def buscar_melhor_localizacao(linha_planilha):
             
             if score_atual >= 100:
                 print("[DECISÃO]: Match Perfeito encontrado. Encerrando busca.")
+                salvar_endereco_encontrado({
+                    "endereco_normalizado": endereco_normalizado,
+                    "bairro": bairro_input,
+                    "cidade": cidade_input,
+                    "lat": lat,
+                    "lng": lng
+                })
                 return resultado
             
             if score_atual > maior_score_global:
