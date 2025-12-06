@@ -41,3 +41,58 @@ def salvar_endereco_encontrado(dados: dict):
         print(f"Erro ao salvar no Supabase: {e}")
         return None
     
+def buscar_coordenadas(endereco_normalizado: str):
+
+    if not supabase:
+        return {"erro": "Supabase não configurado"}
+
+    if not endereco_normalizado:
+        return {"erro": "endereco_normalizado é obrigatório"}
+
+    try:
+        resultado = (
+            supabase.table("enderecos_processados")
+            .select("lat, lng, endereco_normalizado")
+            .eq("endereco_normalizado", endereco_normalizado)
+            .execute()
+        )
+
+        if resultado.data and len(resultado.data) > 0:
+            registro = resultado.data[0]
+            return {
+                "latitude": registro.get("lat"),
+                "longitude": registro.get("lng"),
+                "endereco_normalizado": registro.get("endereco_normalizado"),
+                "mensagem": "Endereço encontrado"
+            }
+
+        return None
+
+    except Exception as e:
+        return {"erro": f"Erro ao consultar Supabase: {e}"}
+    
+
+def salvar_endereco_editado_db(endereco_normalizado: str, bairro: str, cidade: str, lat: float, lng: float):
+    try:
+        inserido = (
+            supabase.table("enderecos_processados")
+            .insert({
+                "endereco_normalizado": endereco_normalizado,
+                "bairro": bairro,
+                "cidade": cidade,
+                "lat": lat,
+                "lng": lng
+            })
+            .execute()
+        )
+
+        return {
+            "mensagem": "Endereço inserido manualmente",
+            "registro": inserido.data[0]
+        }
+
+    except Exception as e:
+        print("Erro ao salvar endereço no banco:", e)
+        return {"erro": str(e)}
+
+    

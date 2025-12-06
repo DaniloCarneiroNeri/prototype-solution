@@ -2,7 +2,7 @@ import asyncio
 import re
 import pandas as pd
 from app.services.geocoder import geocode_with_here
-from app.services.database import salvar_endereco_encontrado
+from app.services.database import (salvar_endereco_encontrado, buscar_coordenadas)
 from app.services.normalizer import (
     normalizar_endereco, 
     extrair_valores_quadra_lote, 
@@ -127,21 +127,40 @@ async def buscar_melhor_localizacao(linha_planilha):
     
     bairro_input = str(linha_planilha.get("Bairro", "")).strip()
     cidade_input = str(linha_planilha.get("City", "Goiânia")).strip()
-    
-    # 1. Normalização
+
+    # Normalização
     endereco_normalizado = normalizar_endereco(endereco_bruto, bairro_input)
     print(f"[NORMALIZED]: {endereco_normalizado}")
-    
+
+    # Condominio detectado
     if endereco_normalizado == "Condominio":
-        return "", "", False, True, "CONDOMINIO_DETECTED"
+        return "", "", False, True, "CONDOMINIO_DETECTED", endereco_normalizado
+
+    #Validar se exite na base
+    endereco_base = buscar_coordenadas(endereco_normalizado)
+
+    if asyncio.iscoroutine(endereco_base):
+        endereco_base = await endereco_base
+
+    if endereco_base and isinstance(endereco_base, dict):
+        lat_b = endereco_base.get("latitude")
+        if lat_b is None:
+            lat_b = endereco_base.get("lat")
+
+        lng_b = endereco_base.get("longitude")
+        if lng_b is None:
+            lng_b = endereco_base.get("lng")
+
+        if lat_b is not None and lng_b is not None:
+            end_norm_ret = endereco_base.get("endereco_normalizado") or endereco_normalizado
+            return lat_b, lng_b, False, False, "EXACT", end_norm_ret
+
 
     target_q, target_l = extrair_valores_quadra_lote(endereco_bruto)
-    # Tenta extrair do normalizado se falhar no bruto
     if not target_q:
         target_q, target_l = extrair_valores_quadra_lote(endereco_normalizado)
 
     print(f"[EXTRACTED]: Q: {target_q} | L: {target_l}")
-
     base_rua = extrair_base_rua(endereco_normalizado)
     
     dados_alvo = {
@@ -153,26 +172,22 @@ async def buscar_melhor_localizacao(linha_planilha):
     }
 
     estrategias = []
-    
-    # Estratégia 1: Normalizado (Melhor caso: RC-017, 10-20)
     estrategias.append({"q": f"{endereco_normalizado}, {cidade_input}", "type": "NORMALIZED"})
-    
-    # Estratégia 2: Se tiver Q/L, tenta formato explícito
-    if target_q and target_l:
-         estrategias.append({"q": f"{base_rua}, QD {target_q} LT {target_l}, {cidade_input}", "type": "EXPLICIT_QL"})
 
-    # Estratégia 3: Rua e Bairro apenas
+    if target_q and target_l:
+        estrategias.append({"q": f"{base_rua}, QD {target_q} LT {target_l}, {cidade_input}", "type": "EXPLICIT_QL"})
+
     rua_limpa = base_rua.replace("-", " ") 
     estrategias.append({"q": f"{rua_limpa}, {bairro_input}, {cidade_input}", "type": "STREET_ONLY"})
 
     melhor_resultado_global = ("Não encontrado", "Não encontrado", False, False, "FAILED")
-    maior_score_global = -1 
+    maior_score_global = -1
     
     for strat in estrategias:
         print(f"[SEARCH QUERY]: {strat['q']} ({strat['type']})")
         
         itens_retornados, status = await geocode_with_here(strat["q"])
-        if status != "OK" or not itens_retornados: 
+        if status != "OK" or not itens_retornados:
             print("   -> 0 resultados encontrados.")
             continue
 
@@ -183,12 +198,13 @@ async def buscar_melhor_localizacao(linha_planilha):
             lat, lng, parcial, cond, log = resultado
             
             score_atual = 100 if "MATCH_QUADRA_OK" in log or "EXACT" in log else 50
-            if "BAIRRO_MISMATCH" in log: score_atual -= 20
+            if "BAIRRO_MISMATCH" in log: 
+                score_atual -= 20
             
             print(f"   -> [RESULTADO ESTRATÉGIA]: {log} (Score: {score_atual})")
             
             if score_atual >= 100:
-                print("[DECISÃO]: Match Perfeito encontrado. Encerrando busca.")
+                print("[DECISÃO]: Match Perfeito. Salvando na base.")
                 salvar_endereco_encontrado({
                     "endereco_normalizado": endereco_normalizado,
                     "bairro": bairro_input,
@@ -196,16 +212,15 @@ async def buscar_melhor_localizacao(linha_planilha):
                     "lat": lat,
                     "lng": lng
                 })
-                return resultado
+                return lat, lng, parcial, cond, log, endereco_normalizado
             
             if score_atual > maior_score_global:
                 maior_score_global = score_atual
-                melhor_resultado_global = resultado
+                melhor_resultado_global = (lat, lng, parcial, cond, log)
 
-    # Vizinhos...
     if target_q and target_l and maior_score_global < 100:
-        print("[NEIGHBOR]: Tentando busca por vizinhos...")
-        # (Código dos vizinhos mantido igual, apenas adicione prints se necessário)
+        print("[NEIGHBOR]: Tentando vizinhos...")
         pass
 
-    return melhor_resultado_global
+    lat, lng, parcial, cond, log = melhor_resultado_global
+    return lat, lng, parcial, cond, log, endereco_normalizado

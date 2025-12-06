@@ -250,16 +250,19 @@ function updateSelectedInfo(lat, lng) {
 // --- Botão Confirmar ---
 const btnConfirm = document.getElementById("btnConfirmLocation");
 if (btnConfirm) {
-    btnConfirm.onclick = function() {
+    btnConfirm.onclick = async function() {
         if (currentEditingIndex === null) return;
 
         const lat = parseFloat(this.dataset.lat);
         const lng = parseFloat(this.dataset.lng);
+        const row = globalData[currentEditingIndex];
 
         globalData[currentEditingIndex]["Geo_Latitude"] = lat;
         globalData[currentEditingIndex]["Geo_Longitude"] = lng;
         globalData[currentEditingIndex]["Status_Log"] = "MANUAL_FIX";
         globalData[currentEditingIndex]["Partial_Match"] = false;
+
+        await salvarEnderecoEditadoManualmente(row, lat, lng);
 
         const columns = globalData.length ? Object.keys(globalData[0]) : [];
         UI.renderTable(columns, globalData); 
@@ -267,6 +270,51 @@ if (btnConfirm) {
         closeMapModal(); 
     };
 }
+
+async function salvarEnderecoEditadoManualmente(row, lat, lng) {
+    return new Promise((resolve, reject) => {
+        const formData = new FormData();
+        formData.append("endereco_normalizado", row["Endereco Normalizado"] || "");
+        formData.append("bairro", row["Bairro"] || "");
+        formData.append("cidade", row["City"] || "Goiânia");
+        formData.append("lat", lat);
+        formData.append("lng", lng);
+
+        const xhr = new XMLHttpRequest();
+
+        xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable) {
+                const pct = Math.round((event.loaded / event.total) * 100);
+                console.log(`Salvar endereço: ${pct}%`);
+            }
+        };
+
+        xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                    const resp = JSON.parse(xhr.responseText);
+                    console.log("Endereço manual salvo:", resp);
+                    resolve(resp);
+                } catch (err) {
+                    console.error("Erro ao ler resposta:", err);
+                    reject(err);
+                }
+            } else {
+                console.error("Erro ao salvar endereço:", xhr.statusText);
+                reject(xhr.statusText);
+            }
+        };
+
+        xhr.onerror = () => {
+            console.error("Erro de conexão ao salvar endereço manual.");
+            reject("Erro de conexão");
+        };
+
+        xhr.open("POST", "/salvar_endereco_editado", true);
+        xhr.send(formData);
+    });
+}
+
 
 // --- Busca Manual ---
 const btnManual = document.getElementById("btnManualSearch");
